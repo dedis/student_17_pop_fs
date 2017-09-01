@@ -2,8 +2,7 @@ package daga
 
 import (
 	"encoding/binary"
-	"github.com/dedis/crypto/abstract"
-	"github.com/lbarman/prifi/config"
+	"gopkg.in/dedis/crypto.v0/abstract"
 	"net"
 )
 
@@ -36,7 +35,7 @@ func computeClientGroupGenerator(suite abstract.Suite, clientId int,
 	for _, commit := range serverCommits {
 		cb, err := commit.MarshalBinary()
 		if err != nil {
-			return config.CryptoSuite.Point(), err
+			return CryptoSuite.Point(), err
 		}
 		hashInput = append(hashInput, cb...)
 	}

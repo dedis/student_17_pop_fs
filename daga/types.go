@@ -1,8 +1,7 @@
 package daga
 
 import (
-	"github.com/dedis/crypto/abstract"
-	prifinet "github.com/lbarman/prifi/net"
+	"gopkg.in/dedis/crypto.v0/abstract"
 	"net"
 )
 
@@ -28,15 +27,15 @@ const (
 type RelayProtocol struct {
 	Initialized       bool
 	TrusteeHosts      []string
-	Trustees          []prifinet.NodeRepresentation
+	Trustees          []NodeRepresentation
 	ClientPublicKeys  map[int]abstract.Point
 	TrusteePublicKeys map[int]abstract.Point
 }
 
 type TrusteeProtocol struct {
 	trusteeId          int
-	trustees           []prifinet.NodeRepresentation
-	relay              prifinet.NodeRepresentation
+	trustees           []NodeRepresentation
+	relay              NodeRepresentation
 	relayConn          net.Conn
 	publicKeyRoster    map[int]abstract.Point
 	rand               int                    // r_j
