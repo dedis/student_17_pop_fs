@@ -81,7 +81,7 @@ func (r RandReader) Read(b []byte) (int, error) {
 
 /*DsaSign computes the DSA signature of a message using a given private key
 Usage: DsaSign(private_key, message) big.Int */
-func DsaSign(priv *big.Int, msg []byte) DSASignature {
+func DsaSign(priv dsa.PrivateKey, msg []byte) DSASignature {
 	msgHash := sha512.Sum512(msg)
 
 	return DSASignature{msgHash, *big.NewInt(0), *big.NewInt(0)}

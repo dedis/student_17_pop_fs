@@ -6,6 +6,7 @@ import (
 )
 
 func main() {
-	dagapython.GetParameters()
-	fmt.Printf("test")
+	param := dagapython.GetParameters()
+	fmt.Println(param.Q.BitLen())
+	fmt.Println("test")
 }
