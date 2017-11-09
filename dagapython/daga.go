@@ -2,6 +2,7 @@ package dagapython
 
 import (
 	"crypto/rand"
+	"crypto/sha512"
 	"fmt"
 	"math/big"
 )
@@ -16,6 +17,13 @@ type Paramaters struct {
 /*Context is a struct with all the context elements to be used in DAGA*/
 type Context struct {
 	param Paramaters
+}
+
+/*DSASignature contains the hash of the message signed, and the two values for the DSA signature*/
+type DSASignature struct {
+	hash [64]byte
+	r    big.Int
+	s    big.Int
 }
 
 /*GetParameters Return P,G and Q parameters for DAGA*/
@@ -60,7 +68,8 @@ func GenerateRandomBytes(n int) ([]byte, error) {
 
 /*DsaSign computes the DSA signature of a message using a given private key
 Usage: DsaSign(private_key, message) big.Int */
-func DsaSign(priv *big.Int, msg []byte) *big.Int {
-	//msgHash := sha512.Sum512(msg)
-	return big.NewInt(0)
+func DsaSign(priv *big.Int, msg []byte) DSASignature {
+	msgHash := sha512.Sum512(msg)
+
+	return DSASignature{msgHash, *big.NewInt(0), *big.NewInt(0)}
 }
