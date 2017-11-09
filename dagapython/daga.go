@@ -66,6 +66,18 @@ func GenerateRandomBytes(n int) ([]byte, error) {
 	return b, nil
 }
 
+/*RandReader struct used to implement the io.Reader interface for GenerateRandomBytes*/
+type RandReader struct{}
+
+/*Read function for GenerateRandomBytes*/
+func (r RandReader) Read(b []byte) (int, error) {
+	b, err := GenerateRandomBytes(len(b))
+	if err != nil {
+		return 0, err
+	}
+	return len(b), nil
+}
+
 /*DsaSign computes the DSA signature of a message using a given private key
 Usage: DsaSign(private_key, message) big.Int */
 func DsaSign(priv *big.Int, msg []byte) DSASignature {
