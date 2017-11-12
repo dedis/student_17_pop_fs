@@ -1,11 +1,10 @@
 package dagapython
 
 import (
-	"crypto/dsa"
 	"crypto/rand"
-	"crypto/sha512"
-	"fmt"
-	"math/big"
+
+	"gopkg.in/dedis/crypto.v0/abstract"
+	"gopkg.in/dedis/crypto.v0/ed25519"
 )
 
 /*Parameters is a struct with the parameters for the computations in DAGA*/
@@ -16,19 +15,36 @@ import (
 }*/
 
 /*Context is a struct with all the context elements to be used in DAGA*/
-type Context struct {
+/*type Context struct {
 	param dsa.Parameters
+}*/
+
+/*Group contains the list of client's (X) and server's (Y) public keys*/
+type Group struct {
+	X []abstract.Point
+	Y []abstract.Point
+}
+
+/*ContextEd25519 holds all the context elements for DAGA with the ed25519 curve
+group is the curve
+R is the server's commitments
+H is the client's per-round generators*/
+type ContextEd25519 struct {
+	G Group
+	R []abstract.Point
+	H []abstract.Point
+	C ed25519.Curve
 }
 
 /*DSASignature contains the hash of the message signed, and the two values for the DSA signature*/
-type DSASignature struct {
+/*type DSASignature struct {
 	hash [64]byte
 	r    big.Int
 	s    big.Int
-}
+}*/
 
 /*GetParameters Return P,G and Q parameters for DAGA*/
-func GetParameters() dsa.Parameters {
+/*func GetParameters() dsa.Parameters {
 	// Here are a 1024-bit safe prime and generator of the (P - 1)/2 order subgroup from the Python code.
 	Pvalue := "124325339146889384540494091085456630009856882741872806181731279018491820800119460022367403769795008250021191767583423221479185609066059226301250167164084041279837566626881119772675984258163062926954046545485368458404445166682380071370274810671501916789361956272226105723317679562001235501455748016154806151119"
 	Gvalue := "99656004450068572491707650369312821808187082634000238991378622176696343491115105589981816355495019598158936211590631375413874328242985824977217673016350079715590567506898528605283803802106354523568154237112165652810149860207486982093994904778268429329328161591283210109749627870113664380845204583563547255062"
@@ -49,7 +65,7 @@ func GetParameters() dsa.Parameters {
 	Q.Div(Q.Sub(P, big.NewInt(1)), big.NewInt(2)) //Order of subgroup G generates, Q = (P-1)/2.
 	fmt.Printf("%T\n", Q)
 	return dsa.Parameters{P: P, G: G, Q: Q}
-}
+}*/
 
 /*GenerateRandomBytes returns securely generated random bytes.
 It will return an error if the system's secure random
@@ -81,8 +97,8 @@ func (r RandReader) Read(b []byte) (int, error) {
 
 /*DsaSign computes the DSA signature of a message using a given private key
 Usage: DsaSign(private_key, message) big.Int */
-func DsaSign(priv dsa.PrivateKey, msg []byte) DSASignature {
+/*func DsaSign(priv dsa.PrivateKey, msg []byte) DSASignature {
 	msgHash := sha512.Sum512(msg)
 
 	return DSASignature{msgHash, *big.NewInt(0), *big.NewInt(0)}
-}
+}*/
