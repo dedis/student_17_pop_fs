@@ -14,19 +14,19 @@ func CreateRequest(c ContextEd25519, id int, priv abstract.Scalar) []byte {
 	Z := c.C.Point().Mul(nil, z)
 
 	//Step 2: Generate shared secrets with the servers
-	s := make([][sha512.Size]byte, len(c.G.Y))
+	s := make([][]byte, len(c.G.Y))
 	for i := 0; i < len(c.G.Y); i++ {
 		temp, err := c.C.Point().Mul(c.G.Y[i], z).MarshalBinary()
 		if err != nil {
 			panic("Error in multiply")
 		}
-		s[i] = sha512.Sum512(temp)
+		hash := sha512.Sum512(temp)
+		s[i] = hash[:]
 	}
 	//Step 3: initial linkage tag and commitments
 	//Computes the value of the exponent for the initial linkage tag
 	exp := c.C.Scalar().One()
 	for i := 0; i < len(c.G.Y); i++ {
-		// TODO: Correct this error
 		exp.Mul(exp, c.C.Scalar().SetBytes(s[i]))
 	}
 	temp, err := c.C.Point().Mul(c.H[id], exp).MarshalBinary()
@@ -35,6 +35,7 @@ func CreateRequest(c ContextEd25519, id int, priv abstract.Scalar) []byte {
 	}
 	T0 := temp
 	//Computes the commitments
+	// TODO: SLice of Scalar
 	S := make([][]byte, len(c.G.Y))
 	exp = c.C.Scalar().One()
 	for i := 0; i < len(c.G.Y)+1; i++ {
@@ -43,7 +44,6 @@ func CreateRequest(c ContextEd25519, id int, priv abstract.Scalar) []byte {
 			panic("Error in commitments")
 		}
 		S[i] = temp
-		// TODO: Correct this error
 		exp.Mul(exp, c.C.Scalar().SetBytes(s[i]))
 	}
 	sExp := exp
