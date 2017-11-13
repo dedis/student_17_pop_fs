@@ -36,7 +36,6 @@ func GenerateRandomBytes(n int) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	return b, nil
 }
 
@@ -50,4 +49,12 @@ func (r RandReader) Read(b []byte) (int, error) {
 		return 0, err
 	}
 	return len(b), nil
+}
+
+func EdDSASign(priv, msg []byte) ([]byte, error) {
+	return nil, nil
+}
+
+func EdDSAVerify(public abstract.Point, msg, sig []byte) error {
+	return nil
 }
