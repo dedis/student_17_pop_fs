@@ -7,58 +7,64 @@ import (
 	"gopkg.in/dedis/crypto.v0/random"
 )
 
-/*CreateRequest generates the authentication request to be sent to an arbitrary server*/
-func CreateRequest(c ContextEd25519, id int, priv abstract.Scalar) []byte {
+/*Client is used to store the client's private key and index.
+All the client's methods are attached to it */
+type Client struct {
+	Private abstract.Scalar
+	index   int
+}
+
+/*CreateRequest generates the elements for the authentication request (T0, S) and the generation of the client's proof (s)*/
+func (client *Client) CreateRequest(context ContextEd25519) (T0 abstract.Point, S []abstract.Point, s abstract.Scalar) {
 	//Step 1: generate ephemeral DH keys
-	z := c.C.Scalar().Pick(random.Stream)
-	Z := c.C.Point().Mul(nil, z)
+	z := context.C.Scalar().Pick(random.Stream)
+	Z := context.C.Point().Mul(nil, z)
 
 	//Step 2: Generate shared secrets with the servers
-	s := make([][]byte, len(c.G.Y))
-	for i := 0; i < len(c.G.Y); i++ {
-		temp, err := c.C.Point().Mul(c.G.Y[i], z).MarshalBinary()
+	shared := make([][]byte, len(context.G.Y))
+	for i := 0; i < len(context.G.Y); i++ {
+		temp, err := context.C.Point().Mul(context.G.Y[i], z).MarshalBinary()
 		if err != nil {
-			panic("Error in multiply")
+			panic("Error in shared secrets")
 		}
 		hash := sha512.Sum512(temp)
-		s[i] = hash[:]
+		shared[i] = hash[:]
 	}
+
 	//Step 3: initial linkage tag and commitments
 	//Computes the value of the exponent for the initial linkage tag
-	exp := c.C.Scalar().One()
-	for i := 0; i < len(c.G.Y); i++ {
-		exp.Mul(exp, c.C.Scalar().SetBytes(s[i]))
+	exp := context.C.Scalar().One()
+	for i := 0; i < len(context.G.Y); i++ {
+		exp.Mul(exp, context.C.Scalar().SetBytes(shared[i]))
 	}
-	temp, err := c.C.Point().Mul(c.H[id], exp).MarshalBinary()
-	if err != nil {
-		panic("Error in T0")
-	}
-	T0 := temp
+	T0 = context.C.Point().Mul(context.H[client.index], exp)
+
 	//Computes the commitments
 	// TODO: SLice of Scalar
-	S := make([][]byte, len(c.G.Y))
-	exp = c.C.Scalar().One()
-	for i := 0; i < len(c.G.Y)+1; i++ {
-		temp, err := c.C.Point().Mul(nil, exp).MarshalBinary()
-		if err != nil {
-			panic("Error in commitments")
-		}
-		S[i] = temp
-		exp.Mul(exp, c.C.Scalar().SetBytes(s[i]))
+	S = make([]abstract.Point, len(context.G.Y))
+	exp = context.C.Scalar().One()
+	for i := 0; i < len(context.G.Y)+1; i++ {
+		S[i] = context.C.Point().Mul(nil, exp)
+		exp.Mul(exp, context.C.Scalar().SetBytes(shared[i]))
 	}
-	sExp := exp
+	s = exp
 
-	//Step 4: Generate the proof
+	//Add the client's ephemeral public key to the commitments
+	/*Prepend taken from comment at
+	https://codingair.wordpress.com/2014/07/18/go-appendprepend-item-into-slice/ */
+	S = append(S, nil)
+	copy(S[1:], S)
+	S[0] = Z
 
-	return msg
+	return T0, S, s
 }
 
 // TODO:
-func GenerateProofCommitments(C ContextEd25519, sExp abstract.Scalar, id int) (t [][]byte, w []abstract.Scalar) {
-
+func (client *Client) GenerateProofCommitments(C ContextEd25519, s abstract.Scalar) (t []abstract.Point, w []abstract.Scalar) {
+	return nil, nil
 }
 
 // TODO:
-func GenerateProofResponses() (c, r []abstract.Scalar) {
-
+func (client *Client) GenerateProofResponses(C ContextEd25519, s abstract.Scalar, cs abstract.Scalar, t []abstract.Point, w []abstract.Scalar) (c, r []abstract.Scalar) {
+	return nil, nil
 }
