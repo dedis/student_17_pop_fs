@@ -15,7 +15,7 @@ type Client struct {
 }
 
 /*CreateRequest generates the elements for the authentication request (T0, S) and the generation of the client's proof (s)*/
-func (client *Client) CreateRequest(context ContextEd25519) (T0 abstract.Point, S []abstract.Point, s abstract.Scalar) {
+func (client *Client) CreateRequest(context ContextEd25519) (T0 abstract.Point, S []abstract.Point) {
 	//Step 1: generate ephemeral DH keys
 	z := context.C.Scalar().Pick(random.Stream)
 	Z := context.C.Point().Mul(nil, z)
@@ -47,7 +47,6 @@ func (client *Client) CreateRequest(context ContextEd25519) (T0 abstract.Point, 
 		S[i] = context.C.Point().Mul(nil, exp)
 		exp.Mul(exp, context.C.Scalar().SetBytes(shared[i]))
 	}
-	s = exp
 
 	//Add the client's ephemeral public key to the commitments
 	/*Prepend taken from comment at
@@ -56,15 +55,41 @@ func (client *Client) CreateRequest(context ContextEd25519) (T0 abstract.Point, 
 	copy(S[1:], S)
 	S[0] = Z
 
-	return T0, S, s
+	return T0, S
 }
 
+//GenerateProofCommitments creates and returns the client's commitments t and the random wieghts w
 // TODO:
-func (client *Client) GenerateProofCommitments(C ContextEd25519, s abstract.Scalar) (t []abstract.Point, w []abstract.Scalar) {
+func (client *Client) GenerateProofCommitments(context ContextEd25519, Sm abstract.Point) (t []abstract.Point, w []abstract.Scalar) {
+	//Generates w randomly except for w[client.index] = 0
+	w = make([]abstract.Scalar, len(context.H))
+	for i := 0; i < len(w); i++ {
+		if i == client.index {
+			w[i] = context.C.Scalar().Zero()
+		} else {
+			w[i] = context.C.Scalar().Pick(random.Stream)
+		}
+	}
+
+	//Generates random v (2 per client)
+	v := make([]abstract.Scalar, 2*len(context.H))
+	for i := 0; i < len(v); i++ {
+		v[i] = context.C.Scalar().Pick(random.Stream)
+	}
+	//Generates the commitments t (3 per clients)
+	t = make([]abstract.Point, 3*len(context.H))
+	for i := 0; i < len(context.H); i++ {
+		a := context.C.Point().Mul(context.H[i], w[i])
+		b := context.C.Point().Mul(nil, v[2*i])
+		t[3*i] = context.C.Point().Add(a, b)
+
+	}
+
 	return nil, nil
 }
 
+//GenerateProofResponses creates the responses to the challenge cs sent by the servers
 // TODO:
-func (client *Client) GenerateProofResponses(C ContextEd25519, s abstract.Scalar, cs abstract.Scalar, t []abstract.Point, w []abstract.Scalar) (c, r []abstract.Scalar) {
+func (client *Client) GenerateProofResponses(context ContextEd25519, s abstract.Scalar, cs abstract.Scalar, t []abstract.Point, w []abstract.Scalar) (c, r []abstract.Scalar) {
 	return nil, nil
 }
