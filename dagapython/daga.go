@@ -5,6 +5,7 @@ import (
 
 	"gopkg.in/dedis/crypto.v0/abstract"
 	"gopkg.in/dedis/crypto.v0/ed25519"
+	"gopkg.in/dedis/crypto.v0/sign"
 )
 
 /*Group contains the list of client's (X) and server's (Y) public keys*/
@@ -51,10 +52,19 @@ func (r RandReader) Read(b []byte) (int, error) {
 	return len(b), nil
 }
 
-func EdDSASign(priv, msg []byte) ([]byte, error) {
-	return nil, nil
+/*Sign uses gnerates a Schnorr signature*/
+func Sign(priv abstract.Scalar, msg []byte) (s []byte, err error) {
+	suite := ed25519.NewAES128SHA256Ed25519(false)
+	s, err = sign.Schnorr(suite, priv, msg)
+	if err != nil {
+		panic("Error in the signature generation")
+	}
+	return s, err
 }
 
-func EdDSAVerify(public abstract.Point, msg, sig []byte) error {
-	return nil
+/*Verify check if a Schnorr signature is valid*/
+func Verify(public abstract.Point, msg, sig []byte) (err error) {
+	suite := ed25519.NewAES128SHA256Ed25519(false)
+	err = sign.VerifySchnorr(suite, public, msg, sig)
+	return err
 }
