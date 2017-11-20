@@ -59,17 +59,13 @@ func (client *Client) CreateRequest(context ContextEd25519) (T0 abstract.Point, 
 }
 
 //GenerateProofCommitments creates and returns the client's commitments t and the random wieghts w
-// TODO:
-func (client *Client) GenerateProofCommitments(context ContextEd25519, Sm abstract.Point) (t []abstract.Point, w []abstract.Scalar) {
+func (client *Client) GenerateProofCommitments(context ContextEd25519, T0, Sm abstract.Point) (t []abstract.Point, w []abstract.Scalar) {
 	//Generates w randomly except for w[client.index] = 0
 	w = make([]abstract.Scalar, len(context.H))
-	for i := 0; i < len(w); i++ {
-		if i == client.index {
-			w[i] = context.C.Scalar().Zero()
-		} else {
-			w[i] = context.C.Scalar().Pick(random.Stream)
-		}
+	for i := range w {
+		w[i] = context.C.Scalar().Pick(random.Stream)
 	}
+	w[client.index] = context.C.Scalar().Zero()
 
 	//Generates random v (2 per client)
 	v := make([]abstract.Scalar, 2*len(context.H))
@@ -83,9 +79,16 @@ func (client *Client) GenerateProofCommitments(context ContextEd25519, Sm abstra
 		b := context.C.Point().Mul(nil, v[2*i])
 		t[3*i] = context.C.Point().Add(a, b)
 
+		c := context.C.Point().Mul(Sm, w[i])
+		d := context.C.Point().Mul(nil, v[2*i+1])
+		t[3*i+1] = context.C.Point().Add(c, d)
+
+		e := context.C.Point().Mul(T0, w[i])
+		f := context.C.Point().Mul(context.H[i], v[2*i+1])
+		t[3*i+2] = context.C.Point().Add(e, f)
 	}
 
-	return nil, nil
+	return t, w
 }
 
 //GenerateProofResponses creates the responses to the challenge cs sent by the servers
