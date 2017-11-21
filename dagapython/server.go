@@ -33,6 +33,24 @@ type Challenge struct {
 	Sigs []ServerSignature
 }
 
+/*ServerMessage stores the message sent by a server to one or many others*/
+type ServerMessage struct {
+	request ClientMessage
+	tags    []abstract.Point
+	proofs  []ServerProof
+	indexes []int
+}
+
+/*ServerProof stores a server proof of his computations*/
+type ServerProof struct {
+	t1 abstract.Point
+	t2 abstract.Point
+	t3 abstract.Point
+	c  []byte
+	r1 abstract.Scalar
+	r2 abstract.Scalar
+}
+
 /*GenerateCommitment creates the commitment and its opening for the distributed challenge generation*/
 func (server *Server) GenerateCommitment(context ContextEd25519) (commit Commitment, opening abstract.Scalar) {
 	opening = context.C.Scalar().Pick(random.Stream)

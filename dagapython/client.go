@@ -14,6 +14,22 @@ type Client struct {
 	index   int
 }
 
+/*ClientMessage stores an authentication request message sent by the client to an arbitrarily chosen server*/
+type ClientMessage struct {
+	context ContextEd25519
+	S       []abstract.Point
+	T0      abstract.Point
+	P0      ClientProof
+}
+
+/*ClientProof stores the client's proof of his computations*/
+type ClientProof struct {
+	cs abstract.Scalar
+	t  []abstract.Point
+	c  []abstract.Scalar
+	r  []abstract.Scalar
+}
+
 /*CreateRequest generates the elements for the authentication request (T0, S) and the generation of the client's proof (s)*/
 func (client *Client) CreateRequest(context ContextEd25519) (T0 abstract.Point, S []abstract.Point, s abstract.Scalar) {
 	//Step 1: generate ephemeral DH keys
