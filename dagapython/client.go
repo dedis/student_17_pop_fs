@@ -19,7 +19,7 @@ type ClientMessage struct {
 	context ContextEd25519
 	S       []abstract.Point
 	T0      abstract.Point
-	P0      ClientProof
+	proof   ClientProof
 }
 
 /*ClientProof stores the client's proof of his computations*/
@@ -129,4 +129,53 @@ func (client *Client) GenerateProofResponses(context ContextEd25519, s, cs abstr
 	r[2*client.index+1] = context.C.Scalar().Sub(v[2*client.index+1], b)
 
 	return c, r
+}
+
+/*VerifyClientProof checks the validity of a client's proof*/
+func VerifyClientProof(msg ClientMessage) bool {
+	n := len(msg.context.G.X)
+	if len(msg.proof.c) != n {
+		return false
+	}
+	if len(msg.proof.r) != 2*n {
+		return false
+	}
+	if len(msg.proof.t) != 3*n {
+		return false
+	}
+
+	//Check the commitments
+	for i := 0; i < n; i++ {
+		a := msg.context.C.Point().Mul(msg.context.G.X[i], msg.proof.c[i])
+		b := msg.context.C.Point().Mul(nil, msg.proof.r[2*i])
+		ti0 := msg.context.C.Point().Add(a, b)
+		if !ti0.Equal(msg.proof.t[3*i]) {
+			return false
+		}
+
+		c := msg.context.C.Point().Mul(msg.S[len(msg.S)-1], msg.proof.c[i])
+		d := msg.context.C.Point().Mul(nil, msg.proof.r[2*i+1])
+		ti10 := msg.context.C.Point().Add(c, d)
+		if !ti10.Equal(msg.proof.t[3*i+1]) {
+			return false
+		}
+
+		e := msg.context.C.Point().Mul(msg.T0, msg.proof.c[i])
+		f := msg.context.C.Point().Mul(msg.context.H[i], msg.proof.r[2*i+1])
+		ti11 := msg.context.C.Point().Add(e, f)
+		if !ti11.Equal(msg.proof.t[3*i+2]) {
+			return false
+		}
+	}
+
+	//Check the challenge
+	cs := msg.context.C.Scalar().Zero()
+	for _, ci := range msg.proof.c {
+		cs = msg.context.C.Scalar().Add(cs, ci)
+	}
+	if !cs.Equal(msg.proof.cs) {
+		return false
+	}
+
+	return true
 }
