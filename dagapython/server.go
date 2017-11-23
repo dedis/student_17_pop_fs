@@ -157,8 +157,8 @@ func (server *Server) ServerProtocol(context ContextEd25519, msg ServerMessage) 
 	if len(msg.proofs) != 0 {
 		for i, p := range msg.proofs {
 			var valid bool
-			if p.t3 == nil && p.r2 == nil {
-				valid = VerifyMisbehavingProof(context, p)
+			if p.r2 == nil {
+				valid = VerifyMisbehavingProof(context, i, p, msg.request.S[0])
 			} else {
 				valid = VerifyServerProof(context, i, msg)
 			}
@@ -180,7 +180,7 @@ func (server *Server) ServerProtocol(context ContextEd25519, msg ServerMessage) 
 	//Detect a misbehaving client and generate the elements of the server's message accordingly
 	if !msg.request.S[server.index+1].Equal(context.C.Point().Mul(msg.request.S[server.index], s)) {
 		T = context.C.Point().Null()
-		proof = server.GenerateMisbehavingProof(context)
+		proof = server.GenerateMisbehavingProof(context, msg.request.S[0])
 	} else {
 		inv := context.C.Scalar().Inv(s)
 		exp := context.C.Scalar().Mul(server.r, inv)
@@ -307,11 +307,77 @@ func VerifyServerProof(context ContextEd25519, i int, msg ServerMessage) bool {
 }
 
 /*GenerateMisbehavingProof creates the proof of a misbehaving client*/
-func (server *Server) GenerateMisbehavingProof(context ContextEd25519) (proof ServerProof) {
-	return ServerProof{}
+func (server *Server) GenerateMisbehavingProof(context ContextEd25519, Z abstract.Point) (proof ServerProof) {
+	Zs := context.C.Point().Mul(Z, server.Private)
+
+	//Step 1
+	v := context.C.Scalar().Pick(random.Stream)
+	t1 := context.C.Point().Mul(Z, v)
+	t2 := context.C.Point().Mul(nil, v)
+
+	//Step 2
+	temp := []abstract.Point{Zs, Z, context.G.Y[server.index], context.C.Point().Mul(nil, context.C.Scalar().One()), t1, t2}
+	var data []byte
+	for _, i := range temp {
+		binary, err := i.MarshalBinary()
+		if err != nil {
+			panic("Error in point conversion")
+		}
+		for _, b := range binary {
+			data = append(data, b)
+		}
+	}
+	challenge := sha512.Sum512(data)
+	c := context.C.Scalar().SetBytes(challenge[:])
+
+	//Step 3
+	a := context.C.Scalar().Mul(c, server.Private)
+	r := context.C.Scalar().Sub(v, a)
+
+	//Step 4
+	return ServerProof{
+		t1: t1,
+		t2: t2,
+		t3: Zs,
+		c:  c,
+		r1: r,
+		r2: nil,
+	}
 }
 
 /*VerifyMisbehavingProof verifies a proof of a misbehaving client*/
-func VerifyMisbehavingProof(context ContextEd25519, proof ServerProof) bool {
-	return false
+func VerifyMisbehavingProof(context ContextEd25519, i int, proof ServerProof, Z abstract.Point) bool {
+	if proof.r2 != nil {
+		return false
+	}
+
+	//Step 1
+	a := context.C.Point().Mul(Z, proof.r1)       //r1 = r
+	b := context.C.Point().Mul(proof.t3, proof.c) //t3 = Zs
+	t1 := context.C.Point().Add(a, b)
+
+	d := context.C.Point().Mul(nil, proof.r1) //r1 = r
+	e := context.C.Point().Mul(context.G.Y[i], proof.c)
+	t2 := context.C.Point().Add(d, e)
+
+	//Step 2
+	temp := []abstract.Point{proof.t3, Z, context.G.Y[i], context.C.Point().Mul(nil, context.C.Scalar().One()), t1, t2}
+	var data []byte
+	for _, i := range temp {
+		binary, err := i.MarshalBinary()
+		if err != nil {
+			panic("Error in point conversion")
+		}
+		for _, b := range binary {
+			data = append(data, b)
+		}
+	}
+	challenge := sha512.Sum512(data)
+	c := context.C.Scalar().SetBytes(challenge[:])
+
+	if !c.Equal(proof.c) {
+		return false
+	}
+
+	return true
 }
