@@ -179,3 +179,27 @@ func VerifyClientProof(msg ClientMessage) bool {
 
 	return true
 }
+
+/*ValidateClientMessage is an utility function to validate that a client message is correclty formed*/
+func ValidateClientMessage(msg ClientMessage) bool {
+	//Number of clients
+	i := len(msg.context.G.X)
+	//Number of servers
+	j := len(msg.context.G.Y)
+	//A commimtment for each server exists and the second element is the generator S=(Z,g,S1,..,Sj)
+	if len(msg.S) != j+2 {
+		return false
+	}
+	if msg.S[0] != msg.context.C.Point().Mul(nil, msg.context.C.Scalar().One()) {
+		return false
+	}
+	//T0 not empty
+	if msg.T0 == nil {
+		return false
+	}
+	//Proof fields have the correct size
+	if len(msg.proof.c) != j || len(msg.proof.r) != 2*i || len(msg.proof.t) != 3*i || msg.proof.cs == nil {
+		return false
+	}
+	return true
+}

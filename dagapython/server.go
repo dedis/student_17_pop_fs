@@ -1,6 +1,7 @@
 package dagapython
 
 import (
+	"crypto/sha512"
 	"fmt"
 	"strconv"
 
@@ -13,6 +14,7 @@ All the server's methods are attached to it */
 type Server struct {
 	Private abstract.Scalar
 	index   int
+	r       abstract.Scalar //Per round secret
 }
 
 /*Commitment stores the index of the server, the commitment value and the signature for the commitment*/
@@ -135,4 +137,79 @@ func (server *Server) CheckChallengeSignatures(context ContextEd25519, cs abstra
 	newChallenge = Challenge{Sigs: append(challenge.Sigs, ServerSignature{index: server.index, sig: sig}), cs: challenge.cs}
 
 	return newChallenge, nil
+}
+
+/*ServerProtocol runs the server part of DAGA upon receiving a message from either a server or a client*/
+func (server *Server) ServerProtocol(context ContextEd25519, msg ServerMessage) (ServerMessage, error) {
+	//Step 1
+	//Verify that the message is correctly formed
+	if !ValidateClientMessage(msg.request) {
+		return ServerMessage{}, fmt.Errorf("Invalid client's request")
+	}
+	if len(msg.indexes) != len(msg.proofs) || len(msg.proofs) != len(msg.tags) {
+		return ServerMessage{}, fmt.Errorf("Invalid message")
+	}
+	// TODO: Add signature checking before processing the proofs
+	if !VerifyClientProof(msg.request) {
+		return ServerMessage{}, fmt.Errorf("Invalid client's proof")
+	}
+
+	if len(msg.proofs) != 0 {
+		for _, p := range msg.proofs {
+			var valid bool
+			if p.t3 == nil && p.r2 == nil {
+				valid = VerifyMisbehavingProof(p)
+			} else {
+				valid = VerifyServerProof(p)
+			}
+			if !valid {
+				return ServerMessage{}, fmt.Errorf("Invalid server proof")
+			}
+		}
+	}
+
+	//Step 2: Verify the correct behaviour of the client
+	temp, err := context.C.Point().Mul(msg.request.S[0], server.Private).MarshalBinary()
+	if err != nil {
+		panic("Error in shared secrets")
+	}
+	hash := sha512.Sum512(temp)
+	s := context.C.Scalar().SetBytes(hash[:])
+	var T abstract.Point
+	var proof ServerProof
+	//Detect a misbehaving client and generate the elements of the server's message accordingly
+	if !msg.request.S[server.index+1].Equal(context.C.Point().Mul(msg.request.S[server.index], s)) {
+		T = context.C.Point().Null()
+		proof = server.GenerateMisbehavingProof()
+	} else {
+		inv := context.C.Scalar().Inv(s)
+		exp := context.C.Scalar().Mul(server.r, inv)
+		T = context.C.Point().Mul(msg.tags[len(msg.tags)-1], exp)
+		proof = server.GenerateServerProof()
+	}
+	//Step 4: Form the new message
+	out := ServerMessage{
+		request: msg.request,
+		tags:    append(msg.tags, T),
+		proofs:  append(msg.proofs, proof),
+		indexes: append(msg.indexes, server.index),
+	}
+
+	return out, nil
+}
+
+func (server *Server) GenerateServerProof() (proof ServerProof) {
+	return ServerProof{}
+}
+
+func VerifyServerProof(proof ServerProof) bool {
+	return false
+}
+
+func (server *Server) GenerateMisbehavingProof() (proof ServerProof) {
+	return ServerProof{}
+}
+
+func VerifyMisbehavingProof(proof ServerProof) bool {
+	return false
 }
