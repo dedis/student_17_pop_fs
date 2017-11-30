@@ -107,49 +107,48 @@ func (server *Server) CheckOpenings(context ContextEd25519, commits []Commitment
 
 /*CheckChallengeSignatures verifies that all the previous servers computed the same challenges and that their signatures are valid
 It also adds the server's signature to the list if it the round-robin is not completed (the challenge has not yet made it back to the leader)*/
-// TODO: Should I use *Challenge to be able to modify it without having to return it?
-func (server *Server) CheckChallengeSignatures(context ContextEd25519, cs abstract.Scalar, challenge Challenge) (newChallenge *Challenge, err error) {
+func (server *Server) CheckChallengeSignatures(context ContextEd25519, cs abstract.Scalar, challenge *Challenge) (err error) {
 	//Checks that the challenge values match
 	if !cs.Equal(challenge.cs) {
-		return nil, fmt.Errorf("Challenge values does not match")
+		return fmt.Errorf("Challenge values does not match")
 	}
 	//Check the signatures
 	msg, e := challenge.cs.MarshalBinary()
 	if e != nil {
-		return nil, fmt.Errorf("Error in challenge conversion: %s", e)
+		return fmt.Errorf("Error in challenge conversion: %s", e)
 	}
 	for _, sig := range challenge.Sigs {
 		e = Verify(context.G.Y[sig.index], msg, sig.sig)
 		if e != nil {
-			return nil, fmt.Errorf("%s", e)
+			return fmt.Errorf("%s", e)
 		}
 	}
 	//Add the server's signature to the list if it is not the last one
 	if len(challenge.Sigs) == len(context.G.Y) {
-		return &challenge, nil
+		return nil
 	}
 	sig, e := Sign(server.Private, msg)
 	if e != nil {
-		return nil, e
+		return e
 	}
-	newChallenge = &Challenge{Sigs: append(challenge.Sigs, ServerSignature{index: server.index, sig: sig}), cs: challenge.cs}
+	challenge.Sigs = append(challenge.Sigs, ServerSignature{index: server.index, sig: sig})
 
-	return newChallenge, nil
+	return nil
 }
 
 /*ServerProtocol runs the server part of DAGA upon receiving a message from either a server or a client*/
-func (server *Server) ServerProtocol(context ContextEd25519, msg ServerMessage) (*ServerMessage, error) {
+func (server *Server) ServerProtocol(context ContextEd25519, msg *ServerMessage) error {
+	// TODO: Add signature checking before processing the proofs
 	//Step 1
 	//Verify that the message is correctly formed
 	if !ValidateClientMessage(msg.request) {
-		return nil, fmt.Errorf("Invalid client's request")
+		return fmt.Errorf("Invalid client's request")
 	}
 	if len(msg.indexes) != len(msg.proofs) || len(msg.proofs) != len(msg.tags) {
-		return nil, fmt.Errorf("Invalid message")
+		return fmt.Errorf("Invalid message")
 	}
-	// TODO: Add signature checking before processing the proofs
 	if !VerifyClientProof(msg.request) {
-		return nil, fmt.Errorf("Invalid client's proof")
+		return fmt.Errorf("Invalid client's proof")
 	}
 
 	if len(msg.proofs) != 0 {
@@ -161,7 +160,7 @@ func (server *Server) ServerProtocol(context ContextEd25519, msg ServerMessage) 
 				valid = VerifyServerProof(context, i, msg)
 			}
 			if !valid {
-				return nil, fmt.Errorf("Invalid server proof")
+				return fmt.Errorf("Invalid server proof")
 			}
 		}
 	}
@@ -169,7 +168,7 @@ func (server *Server) ServerProtocol(context ContextEd25519, msg ServerMessage) 
 	//Step 2: Verify the correct behaviour of the client
 	temp, err := context.C.Point().Mul(msg.request.S[0], server.Private).MarshalBinary()
 	if err != nil {
-		return nil, fmt.Errorf("Error in shared secrets")
+		return fmt.Errorf("Error in shared secrets")
 	}
 	hash := sha512.Sum512(temp)
 	s := context.C.Scalar().SetBytes(hash[:])
@@ -187,21 +186,17 @@ func (server *Server) ServerProtocol(context ContextEd25519, msg ServerMessage) 
 		proof, e = server.GenerateServerProof(context, s, T, msg)
 	}
 	if e != nil {
-		return nil, e
+		return e
 	}
 	//Step 4: Form the new message
-	out := ServerMessage{
-		request: msg.request,
-		tags:    append(msg.tags, T),
-		proofs:  append(msg.proofs, *proof),
-		indexes: append(msg.indexes, server.index),
-	}
-
-	return &out, nil
+	msg.tags = append(msg.tags, T)
+	msg.proofs = append(msg.proofs, *proof)
+	msg.indexes = append(msg.indexes, server.index)
+	return nil
 }
 
 /*GenerateServerProof creates the server proof for its computations*/
-func (server *Server) GenerateServerProof(context ContextEd25519, s abstract.Scalar, T abstract.Point, msg ServerMessage) (proof *ServerProof, err error) {
+func (server *Server) GenerateServerProof(context ContextEd25519, s abstract.Scalar, T abstract.Point, msg *ServerMessage) (proof *ServerProof, err error) {
 	//Step 1
 	v1 := context.C.Scalar().Pick(random.Stream)
 	v2 := context.C.Scalar().Pick(random.Stream)
@@ -260,7 +255,7 @@ func (server *Server) GenerateServerProof(context ContextEd25519, s abstract.Sca
 }
 
 /*VerifyServerProof verifies a server proof*/
-func VerifyServerProof(context ContextEd25519, i int, msg ServerMessage) bool {
+func VerifyServerProof(context ContextEd25519, i int, msg *ServerMessage) bool {
 	//Step 1
 	var a abstract.Point
 	if i == 0 {
