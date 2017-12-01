@@ -9,7 +9,7 @@ import (
 )
 
 /*GenerateClientGenerator generates a per-round generator for a given client*/
-func GenerateClientGenerator(index int, commits *[]abstract.Point) (gen *[]abstract.Point) {
+func GenerateClientGenerator(index int, commits *[]abstract.Point) (gen abstract.Point) {
 
 	hasher := sha512.New()
 	var writer io.Writer = hasher
@@ -20,6 +20,7 @@ func GenerateClientGenerator(index int, commits *[]abstract.Point) (gen *[]abstr
 		R.MarshalTo(writer)
 	}
 	hash := hasher.Sum(nil)
-	// TODO: How to map a hash to a point on the curve?
-	return nil
+	rand := suite.Cipher(hash)
+	gen, _ = suite.Point().Pick(nil, rand)
+	return
 }
