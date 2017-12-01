@@ -3,6 +3,7 @@ package dagapython
 import (
 	"crypto/sha512"
 	"fmt"
+	"io"
 
 	"gopkg.in/dedis/crypto.v0/abstract"
 	"gopkg.in/dedis/crypto.v0/random"
@@ -40,11 +41,13 @@ func (client *Client) CreateRequest(context ContextEd25519) (T0 abstract.Point, 
 	//Step 2: Generate shared secrets with the servers
 	shared := make([][]byte, len(context.G.Y))
 	for i := 0; i < len(context.G.Y); i++ {
-		temp, err := context.C.Point().Mul(context.G.Y[i], z).MarshalBinary()
+		hasher := sha512.New()
+		var writer io.Writer = hasher
+		_, err := context.C.Point().Mul(context.G.Y[i], z).MarshalTo(writer)
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("Error in shared secrets: %s", err)
 		}
-		hash := sha512.Sum512(temp)
+		hash := hasher.Sum(nil)
 		shared[i] = hash[:]
 	}
 

@@ -3,6 +3,7 @@ package dagapython
 import (
 	"crypto/sha512"
 	"fmt"
+	"io"
 	"strconv"
 
 	"gopkg.in/dedis/crypto.v0/abstract"
@@ -166,11 +167,13 @@ func (server *Server) ServerProtocol(context ContextEd25519, msg *ServerMessage)
 	}
 
 	//Step 2: Verify the correct behaviour of the client
-	temp, err := context.C.Point().Mul(msg.request.S[0], server.Private).MarshalBinary()
+	hasher := sha512.New()
+	var writer io.Writer = hasher
+	_, err := context.C.Point().Mul(msg.request.S[0], server.Private).MarshalTo(writer)
 	if err != nil {
 		return fmt.Errorf("Error in shared secrets")
 	}
-	hash := sha512.Sum512(temp)
+	hash := hasher.Sum(nil)
 	s := context.C.Scalar().SetBytes(hash[:])
 	var T abstract.Point
 	var proof *ServerProof
@@ -223,18 +226,20 @@ func (server *Server) GenerateServerProof(context ContextEd25519, s abstract.Sca
 	} else {
 		Tprevious = msg.tags[len(msg.tags)-1]
 	}
-	temp := []abstract.Point{Tprevious, T, context.R[server.index], context.C.Point().Mul(nil, context.C.Scalar().One()), msg.request.S[server.index+2], msg.request.S[server.index+1], t1, t2, t3}
-	var data []byte
-	for _, i := range temp {
-		binary, e := i.MarshalBinary()
-		if e != nil {
-			return nil, fmt.Errorf("Error in point conversion: %s", e)
-		}
-		for _, b := range binary {
-			data = append(data, b)
-		}
-	}
-	challenge := sha512.Sum512(data)
+	//Generating the hash
+	hasher := sha512.New()
+	var writer io.Writer = hasher
+	Tprevious.MarshalTo(writer)
+	T.MarshalTo(writer)
+	context.R[server.index].MarshalTo(writer)
+	context.C.Point().Mul(nil, context.C.Scalar().One()).MarshalTo(writer)
+	msg.request.S[server.index+2].MarshalTo(writer)
+	msg.request.S[server.index+1].MarshalTo(writer)
+	t1.MarshalTo(writer)
+	t2.MarshalTo(writer)
+	t3.MarshalTo(writer)
+	challenge := hasher.Sum(nil)
+
 	c := context.C.Scalar().SetBytes(challenge[:])
 	//Step 3
 	d := context.C.Scalar().Mul(c, server.Private)
@@ -282,19 +287,19 @@ func VerifyServerProof(context ContextEd25519, i int, msg *ServerMessage) bool {
 	} else {
 		Tprevious = msg.tags[i-1]
 	}
-	temp := []abstract.Point{Tprevious, msg.tags[i], context.R[i], context.C.Point().Mul(nil, context.C.Scalar().One()), msg.request.S[i+2], msg.request.S[i+1], t1, t2, t3}
-	var data []byte
-	for _, i := range temp {
-		binary, err := i.MarshalBinary()
-		if err != nil {
-			//panic("Error in point conversion")
-			return false
-		}
-		for _, b := range binary {
-			data = append(data, b)
-		}
-	}
-	challenge := sha512.Sum512(data)
+	hasher := sha512.New()
+	var writer io.Writer = hasher
+	Tprevious.MarshalTo(writer)
+	msg.tags[i].MarshalTo(writer)
+	context.R[i].MarshalTo(writer)
+	context.C.Point().Mul(nil, context.C.Scalar().One()).MarshalTo(writer)
+	msg.request.S[i+2].MarshalTo(writer)
+	msg.request.S[i+1].MarshalTo(writer)
+	t1.MarshalTo(writer)
+	t2.MarshalTo(writer)
+	t3.MarshalTo(writer)
+	challenge := hasher.Sum(nil)
+
 	c := context.C.Scalar().SetBytes(challenge[:])
 
 	if !c.Equal(msg.proofs[i].c) {
@@ -314,18 +319,16 @@ func (server *Server) GenerateMisbehavingProof(context ContextEd25519, Z abstrac
 	t2 := context.C.Point().Mul(nil, v)
 
 	//Step 2
-	temp := []abstract.Point{Zs, Z, context.G.Y[server.index], context.C.Point().Mul(nil, context.C.Scalar().One()), t1, t2}
-	var data []byte
-	for _, i := range temp {
-		binary, e := i.MarshalBinary()
-		if e != nil {
-			return nil, fmt.Errorf("Error in point conversion; %s", e)
-		}
-		for _, b := range binary {
-			data = append(data, b)
-		}
-	}
-	challenge := sha512.Sum512(data)
+	hasher := sha512.New()
+	var writer io.Writer = hasher
+	Zs.MarshalTo(writer)
+	Z.MarshalTo(writer)
+	context.G.Y[server.index].MarshalTo(writer)
+	context.C.Point().Mul(nil, context.C.Scalar().One()).MarshalTo(writer)
+	t1.MarshalTo(writer)
+	t2.MarshalTo(writer)
+	challenge := hasher.Sum(nil)
+
 	c := context.C.Scalar().SetBytes(challenge[:])
 
 	//Step 3
@@ -359,19 +362,16 @@ func VerifyMisbehavingProof(context ContextEd25519, i int, proof ServerProof, Z 
 	t2 := context.C.Point().Add(d, e)
 
 	//Step 2
-	temp := []abstract.Point{proof.t3, Z, context.G.Y[i], context.C.Point().Mul(nil, context.C.Scalar().One()), t1, t2}
-	var data []byte
-	for _, i := range temp {
-		binary, err := i.MarshalBinary()
-		if err != nil {
-			//panic("Error in point conversion")
-			return false
-		}
-		for _, b := range binary {
-			data = append(data, b)
-		}
-	}
-	challenge := sha512.Sum512(data)
+	hasher := sha512.New()
+	var writer io.Writer = hasher
+	proof.t3.MarshalTo(writer)
+	Z.MarshalTo(writer)
+	context.G.Y[i].MarshalTo(writer)
+	context.C.Point().Mul(nil, context.C.Scalar().One()).MarshalTo(writer)
+	t1.MarshalTo(writer)
+	t2.MarshalTo(writer)
+	challenge := hasher.Sum(nil)
+
 	c := context.C.Scalar().SetBytes(challenge[:])
 
 	if !c.Equal(proof.c) {
