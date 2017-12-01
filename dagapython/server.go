@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"gopkg.in/dedis/crypto.v0/abstract"
+	"gopkg.in/dedis/crypto.v0/ed25519"
 	"gopkg.in/dedis/crypto.v0/random"
 )
 
@@ -379,4 +380,12 @@ func VerifyMisbehavingProof(context ContextEd25519, i int, proof ServerProof, Z 
 	}
 
 	return true
+}
+
+/*GenerateNewRoundSecret creates a new secret for the server, erasing the previous one.
+It returns the commitment to that secret to be included in the context*/
+func (server *Server) GenerateNewRoundSecret() (R abstract.Point) {
+	var C = ed25519.Curve{}
+	server.r = C.Scalar().Pick(random.Stream)
+	return C.Point().Mul(nil, server.r)
 }
