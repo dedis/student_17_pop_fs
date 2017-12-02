@@ -114,14 +114,26 @@ func (client *Client) GenerateProofCommitments(context ContextEd25519, T0 abstra
 }
 
 //GenerateProofResponses creates the responses to the challenge cs sent by the servers
-func (client *Client) GenerateProofResponses(context ContextEd25519, s, cs abstract.Scalar, w, v []abstract.Scalar) (c, r []abstract.Scalar) {
+func (client *Client) GenerateProofResponses(context ContextEd25519, s abstract.Scalar, challenge *Challenge, w, v []abstract.Scalar) (c, r []abstract.Scalar, err error) {
+	//Check challenge signatures
+	msg, e := challenge.cs.MarshalBinary()
+	if e != nil {
+		return nil, nil, fmt.Errorf("Error in challenge conversion: %s", e)
+	}
+	for _, sig := range challenge.Sigs {
+		e = ECDSAVerify(context.G.Y[sig.index], msg, sig.sig)
+		if e != nil {
+			return nil, nil, fmt.Errorf("%s", e)
+		}
+	}
+
 	//Generates the c array
 	copy(c, w)
 	sum := suite.Scalar().Zero()
 	for _, i := range w {
 		sum = suite.Scalar().Add(sum, i)
 	}
-	c[client.index] = suite.Scalar().Sub(cs, sum)
+	c[client.index] = suite.Scalar().Sub(challenge.cs, sum)
 
 	//Generates the responses
 	copy(r, v)
@@ -131,7 +143,7 @@ func (client *Client) GenerateProofResponses(context ContextEd25519, s, cs abstr
 	b := suite.Scalar().Mul(c[client.index], s)
 	r[2*client.index+1] = suite.Scalar().Sub(v[2*client.index+1], b)
 
-	return c, r
+	return c, r, nil
 }
 
 /*VerifyClientProof checks the validity of a client's proof*/
@@ -205,4 +217,60 @@ func ValidateClientMessage(msg ClientMessage) bool {
 		return false
 	}
 	return true
+}
+
+/*ToBytes is a helper function used to convert a ClientMessage into []byte to be used in signatures*/
+func (msg *ClientMessage) ToBytes() (data []byte, err error) {
+	data, e := msg.context.ToBytes()
+	if e != nil {
+		return nil, fmt.Errorf("Error in context: %s", e)
+	}
+
+	temp, e := PointArrayToBytes(&msg.S)
+	if e != nil {
+		return nil, fmt.Errorf("Error in S: %s", e)
+	}
+	data = append(data, temp...)
+
+	temp, e = msg.T0.MarshalBinary()
+	if e != nil {
+		return nil, fmt.Errorf("Error in T0: %s", e)
+	}
+	data = append(data, temp...)
+
+	temp, e = msg.proof.ToBytes()
+	if e != nil {
+		return nil, fmt.Errorf("Error in proof: %s", e)
+	}
+	data = append(data, temp...)
+
+	return data, nil
+}
+
+/*ToBytes is a helper function used to convert a ClientProof into []byte to be used in signatures*/
+func (proof *ClientProof) ToBytes() (data []byte, err error) {
+	data, e := proof.cs.MarshalBinary()
+	if e != nil {
+		return nil, fmt.Errorf("Error in cs: %s", e)
+	}
+
+	temp, e := PointArrayToBytes(&proof.t)
+	if e != nil {
+		return nil, fmt.Errorf("Error in t: %s", e)
+	}
+	data = append(data, temp...)
+
+	temp, e = ScalarArrayToBytes(&proof.c)
+	if e != nil {
+		return nil, fmt.Errorf("Error in c: %s", e)
+	}
+	data = append(data, temp...)
+
+	temp, e = ScalarArrayToBytes(&proof.r)
+	if e != nil {
+		return nil, fmt.Errorf("Error in r: %s", e)
+	}
+	data = append(data, temp...)
+
+	return data, nil
 }

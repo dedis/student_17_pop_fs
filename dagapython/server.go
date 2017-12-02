@@ -43,6 +43,7 @@ type ServerMessage struct {
 	tags    []abstract.Point
 	proofs  []ServerProof
 	indexes []int
+	sigs    []ServerSignature
 }
 
 /*ServerProof stores a server proof of his computations*/
@@ -63,7 +64,7 @@ func (server *Server) GenerateCommitment(context ContextEd25519) (commit *Commit
 	if err != nil {
 		return nil, nil, fmt.Errorf("Error in conversion of commit: %s", err)
 	}
-	sig, err := Sign(server.Private, msg)
+	sig, err := ECDSASign(server.Private, msg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("Error in commit signature generation: %s", err)
 	}
@@ -83,7 +84,7 @@ func (server *Server) VerifyCommitmentSignature(context ContextEd25519, commits 
 		if e != nil {
 			return fmt.Errorf("Error in conversion of commit for verification: %s", err)
 		}
-		err = Verify(context.G.Y[i], msg, com.Sig.sig)
+		err = ECDSAVerify(context.G.Y[i], msg, com.Sig.sig)
 		if err != nil {
 			return err
 		}
@@ -107,29 +108,31 @@ func (server *Server) CheckOpenings(context ContextEd25519, commits []Commitment
 	return cs, nil
 }
 
-/*CheckChallengeSignatures verifies that all the previous servers computed the same challenges and that their signatures are valid
+/*CheckUpdateChallenge verifies that all the previous servers computed the same challenges and that their signatures are valid
 It also adds the server's signature to the list if it the round-robin is not completed (the challenge has not yet made it back to the leader)*/
-func (server *Server) CheckChallengeSignatures(context ContextEd25519, cs abstract.Scalar, challenge *Challenge) (err error) {
-	//Checks that the challenge values match
-	if !cs.Equal(challenge.cs) {
-		return fmt.Errorf("Challenge values does not match")
-	}
+func (server *Server) CheckUpdateChallenge(context ContextEd25519, cs abstract.Scalar, challenge *Challenge) (err error) {
 	//Check the signatures
 	msg, e := challenge.cs.MarshalBinary()
 	if e != nil {
 		return fmt.Errorf("Error in challenge conversion: %s", e)
 	}
 	for _, sig := range challenge.Sigs {
-		e = Verify(context.G.Y[sig.index], msg, sig.sig)
+		e = ECDSAVerify(context.G.Y[sig.index], msg, sig.sig)
 		if e != nil {
 			return fmt.Errorf("%s", e)
 		}
 	}
+
+	//Checks that the challenge values match
+	if !cs.Equal(challenge.cs) {
+		return fmt.Errorf("Challenge values does not match")
+	}
+
 	//Add the server's signature to the list if it is not the last one
 	if len(challenge.Sigs) == len(context.G.Y) {
 		return nil
 	}
-	sig, e := Sign(server.Private, msg)
+	sig, e := ECDSASign(server.Private, msg)
 	if e != nil {
 		return e
 	}
@@ -140,15 +143,44 @@ func (server *Server) CheckChallengeSignatures(context ContextEd25519, cs abstra
 
 /*ServerProtocol runs the server part of DAGA upon receiving a message from either a server or a client*/
 func (server *Server) ServerProtocol(context ContextEd25519, msg *ServerMessage) error {
-	// TODO: Add signature checking before processing the proofs
 	//Step 1
 	//Verify that the message is correctly formed
 	if !ValidateClientMessage(msg.request) {
 		return fmt.Errorf("Invalid client's request")
 	}
-	if len(msg.indexes) != len(msg.proofs) || len(msg.proofs) != len(msg.tags) {
+	if len(msg.indexes) != len(msg.proofs) || len(msg.proofs) != len(msg.tags) || len(msg.tags) != len(msg.sigs) {
 		return fmt.Errorf("Invalid message")
 	}
+
+	// Iteratively checks each signature if this is not the first server to receive the client's request
+	data, e := msg.request.ToBytes()
+	if e != nil {
+		return fmt.Errorf("Error in request: %s", e)
+	}
+	if len(msg.indexes) != 0 {
+		for i := 0; i < len(msg.indexes); i++ {
+			temp, e := msg.tags[i].MarshalBinary()
+			if e != nil {
+				return fmt.Errorf("Error in tags: %s", e)
+			}
+			data = append(data, temp...)
+
+			temp, e = msg.proofs[i].ToBytes()
+			if e != nil {
+				return fmt.Errorf("Error in proofs: %s", e)
+			}
+			data = append(data, temp...)
+
+			data = append(data, []byte(strconv.Itoa(msg.indexes[i]))...)
+
+			e = ECDSAVerify(context.G.Y[msg.sigs[i].index], data, msg.sigs[i].sig)
+			if e != nil {
+				return fmt.Errorf("Error in signature: "+strconv.Itoa(i)+"\n%s", e)
+			}
+		}
+	}
+
+	// Check the client proof
 	if !VerifyClientProof(msg.request) {
 		return fmt.Errorf("Invalid client's proof")
 	}
@@ -178,7 +210,6 @@ func (server *Server) ServerProtocol(context ContextEd25519, msg *ServerMessage)
 	s := suite.Scalar().SetBytes(hash[:])
 	var T abstract.Point
 	var proof *ServerProof
-	var e error
 	//Detect a misbehaving client and generate the elements of the server's message accordingly
 	if !msg.request.S[server.index+1].Equal(suite.Point().Mul(msg.request.S[server.index], s)) {
 		T = suite.Point().Null()
@@ -192,10 +223,35 @@ func (server *Server) ServerProtocol(context ContextEd25519, msg *ServerMessage)
 	if e != nil {
 		return e
 	}
+
+	//Signs our message
+	temp, e := T.MarshalBinary()
+	if e != nil {
+		return fmt.Errorf("Error in T: %s", e)
+	}
+	data = append(data, temp...)
+
+	temp, e = proof.ToBytes()
+	if e != nil {
+		return fmt.Errorf("Error in proofs: %s", e)
+	}
+	data = append(data, temp...)
+
+	data = append(data, []byte(strconv.Itoa(server.index))...)
+
+	sign, e := ECDSASign(server.Private, data)
+	if e != nil {
+		return fmt.Errorf("Error in own signature: %s", e)
+	}
+
+	signature := ServerSignature{sig: sign, index: server.index}
+
 	//Step 4: Form the new message
 	msg.tags = append(msg.tags, T)
 	msg.proofs = append(msg.proofs, *proof)
 	msg.indexes = append(msg.indexes, server.index)
+	msg.sigs = append(msg.sigs, signature)
+
 	return nil
 }
 
@@ -388,4 +444,45 @@ func (server *Server) GenerateNewRoundSecret() (R abstract.Point) {
 	var C = ed25519.Curve{}
 	server.r = C.Scalar().Pick(random.Stream)
 	return C.Point().Mul(nil, server.r)
+}
+
+/*ToBytes is a helper function used to convert a ServerProof into []byte to be used in signatures*/
+func (proof *ServerProof) ToBytes() (data []byte, err error) {
+	temp, e := proof.t1.MarshalBinary()
+	if e != nil {
+		return nil, fmt.Errorf("Error in t1: %s", e)
+	}
+	data = append(data, temp...)
+
+	temp, e = proof.t2.MarshalBinary()
+	if e != nil {
+		return nil, fmt.Errorf("Error in t2: %s", e)
+	}
+	data = append(data, temp...)
+
+	temp, e = proof.t3.MarshalBinary()
+	if e != nil {
+		return nil, fmt.Errorf("Error in t3: %s", e)
+	}
+	data = append(data, temp...)
+
+	temp, e = proof.c.MarshalBinary()
+	if e != nil {
+		return nil, fmt.Errorf("Error in c: %s", e)
+	}
+	data = append(data, temp...)
+
+	temp, e = proof.r1.MarshalBinary()
+	if e != nil {
+		return nil, fmt.Errorf("Error in r1: %s", e)
+	}
+	data = append(data, temp...)
+
+	temp, e = proof.r2.MarshalBinary()
+	if e != nil {
+		return nil, fmt.Errorf("Error in r2: %s", e)
+	}
+	data = append(data, temp...)
+
+	return data, nil
 }
