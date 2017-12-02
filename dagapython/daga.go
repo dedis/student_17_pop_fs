@@ -8,8 +8,8 @@ import (
 	"gopkg.in/dedis/crypto.v0/sign"
 )
 
-/*Group contains the list of client's (X) and server's (Y) public keys*/
-type Group struct {
+/*Members contains the list of client's (X) and server's (Y) public keys*/
+type Members struct {
 	X []abstract.Point
 	Y []abstract.Point
 }
@@ -19,10 +19,9 @@ group is the curve
 R is the server's commitments
 H is the client's per-round generators*/
 type ContextEd25519 struct {
-	G Group
+	G Members
 	R []abstract.Point
 	H []abstract.Point
-	C ed25519.Curve
 }
 
 var suite = ed25519.NewAES128SHA256Ed25519(false)

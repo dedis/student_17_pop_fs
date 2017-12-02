@@ -35,15 +35,15 @@ type ClientProof struct {
 /*CreateRequest generates the elements for the authentication request (T0, S) and the generation of the client's proof(s)*/
 func (client *Client) CreateRequest(context ContextEd25519) (T0 abstract.Point, S []abstract.Point, s abstract.Scalar, err error) {
 	//Step 1: generate ephemeral DH keys
-	z := context.C.Scalar().Pick(random.Stream)
-	Z := context.C.Point().Mul(nil, z)
+	z := suite.Scalar().Pick(random.Stream)
+	Z := suite.Point().Mul(nil, z)
 
 	//Step 2: Generate shared secrets with the servers
 	shared := make([][]byte, len(context.G.Y))
 	for i := 0; i < len(context.G.Y); i++ {
 		hasher := sha512.New()
 		var writer io.Writer = hasher
-		_, err := context.C.Point().Mul(context.G.Y[i], z).MarshalTo(writer)
+		_, err := suite.Point().Mul(context.G.Y[i], z).MarshalTo(writer)
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("Error in shared secrets: %s", err)
 		}
@@ -53,18 +53,18 @@ func (client *Client) CreateRequest(context ContextEd25519) (T0 abstract.Point, 
 
 	//Step 3: initial linkage tag and commitments
 	//Computes the value of the exponent for the initial linkage tag
-	exp := context.C.Scalar().One()
+	exp := suite.Scalar().One()
 	for i := 0; i < len(context.G.Y); i++ {
-		exp.Mul(exp, context.C.Scalar().SetBytes(shared[i]))
+		exp.Mul(exp, suite.Scalar().SetBytes(shared[i]))
 	}
-	T0 = context.C.Point().Mul(context.H[client.index], exp)
+	T0 = suite.Point().Mul(context.H[client.index], exp)
 
 	//Computes the commitments
 	S = make([]abstract.Point, len(context.G.Y))
-	exp = context.C.Scalar().One()
+	exp = suite.Scalar().One()
 	for i := 0; i < len(context.G.Y)+1; i++ {
-		S[i] = context.C.Point().Mul(nil, exp)
-		exp.Mul(exp, context.C.Scalar().SetBytes(shared[i]))
+		S[i] = suite.Point().Mul(nil, exp)
+		exp.Mul(exp, suite.Scalar().SetBytes(shared[i]))
 	}
 	s = exp
 
@@ -83,31 +83,31 @@ func (client *Client) GenerateProofCommitments(context ContextEd25519, T0 abstra
 	//Generates w randomly except for w[client.index] = 0
 	w = make([]abstract.Scalar, len(context.H))
 	for i := range w {
-		w[i] = context.C.Scalar().Pick(random.Stream)
+		w[i] = suite.Scalar().Pick(random.Stream)
 	}
-	w[client.index] = context.C.Scalar().Zero()
+	w[client.index] = suite.Scalar().Zero()
 
 	//Generates random v (2 per client)
 	v = make([]abstract.Scalar, 2*len(context.H))
 	for i := 0; i < len(v); i++ {
-		v[i] = context.C.Scalar().Pick(random.Stream)
+		v[i] = suite.Scalar().Pick(random.Stream)
 	}
 
 	//Generates the commitments t (3 per clients)
 	t = make([]abstract.Point, 3*len(context.H))
 	for i := 0; i < len(context.H); i++ {
-		a := context.C.Point().Mul(context.H[i], w[i])
-		b := context.C.Point().Mul(nil, v[2*i])
-		t[3*i] = context.C.Point().Add(a, b)
+		a := suite.Point().Mul(context.H[i], w[i])
+		b := suite.Point().Mul(nil, v[2*i])
+		t[3*i] = suite.Point().Add(a, b)
 
-		Sm := context.C.Point().Mul(nil, s)
-		c := context.C.Point().Mul(Sm, w[i])
-		d := context.C.Point().Mul(nil, v[2*i+1])
-		t[3*i+1] = context.C.Point().Add(c, d)
+		Sm := suite.Point().Mul(nil, s)
+		c := suite.Point().Mul(Sm, w[i])
+		d := suite.Point().Mul(nil, v[2*i+1])
+		t[3*i+1] = suite.Point().Add(c, d)
 
-		e := context.C.Point().Mul(T0, w[i])
-		f := context.C.Point().Mul(context.H[i], v[2*i+1])
-		t[3*i+2] = context.C.Point().Add(e, f)
+		e := suite.Point().Mul(T0, w[i])
+		f := suite.Point().Mul(context.H[i], v[2*i+1])
+		t[3*i+2] = suite.Point().Add(e, f)
 	}
 
 	return t, v, w
@@ -117,19 +117,19 @@ func (client *Client) GenerateProofCommitments(context ContextEd25519, T0 abstra
 func (client *Client) GenerateProofResponses(context ContextEd25519, s, cs abstract.Scalar, w, v []abstract.Scalar) (c, r []abstract.Scalar) {
 	//Generates the c array
 	copy(c, w)
-	sum := context.C.Scalar().Zero()
+	sum := suite.Scalar().Zero()
 	for _, i := range w {
-		sum = context.C.Scalar().Add(sum, i)
+		sum = suite.Scalar().Add(sum, i)
 	}
-	c[client.index] = context.C.Scalar().Sub(cs, sum)
+	c[client.index] = suite.Scalar().Sub(cs, sum)
 
 	//Generates the responses
 	copy(r, v)
-	a := context.C.Scalar().Mul(c[client.index], client.Private)
-	r[2*client.index] = context.C.Scalar().Sub(v[2*client.index], a)
+	a := suite.Scalar().Mul(c[client.index], client.Private)
+	r[2*client.index] = suite.Scalar().Sub(v[2*client.index], a)
 
-	b := context.C.Scalar().Mul(c[client.index], s)
-	r[2*client.index+1] = context.C.Scalar().Sub(v[2*client.index+1], b)
+	b := suite.Scalar().Mul(c[client.index], s)
+	r[2*client.index+1] = suite.Scalar().Sub(v[2*client.index+1], b)
 
 	return c, r
 }
@@ -149,32 +149,32 @@ func VerifyClientProof(msg ClientMessage) bool {
 
 	//Check the commitments
 	for i := 0; i < n; i++ {
-		a := msg.context.C.Point().Mul(msg.context.G.X[i], msg.proof.c[i])
-		b := msg.context.C.Point().Mul(nil, msg.proof.r[2*i])
-		ti0 := msg.context.C.Point().Add(a, b)
+		a := suite.Point().Mul(msg.context.G.X[i], msg.proof.c[i])
+		b := suite.Point().Mul(nil, msg.proof.r[2*i])
+		ti0 := suite.Point().Add(a, b)
 		if !ti0.Equal(msg.proof.t[3*i]) {
 			return false
 		}
 
-		c := msg.context.C.Point().Mul(msg.S[len(msg.S)-1], msg.proof.c[i])
-		d := msg.context.C.Point().Mul(nil, msg.proof.r[2*i+1])
-		ti10 := msg.context.C.Point().Add(c, d)
+		c := suite.Point().Mul(msg.S[len(msg.S)-1], msg.proof.c[i])
+		d := suite.Point().Mul(nil, msg.proof.r[2*i+1])
+		ti10 := suite.Point().Add(c, d)
 		if !ti10.Equal(msg.proof.t[3*i+1]) {
 			return false
 		}
 
-		e := msg.context.C.Point().Mul(msg.T0, msg.proof.c[i])
-		f := msg.context.C.Point().Mul(msg.context.H[i], msg.proof.r[2*i+1])
-		ti11 := msg.context.C.Point().Add(e, f)
+		e := suite.Point().Mul(msg.T0, msg.proof.c[i])
+		f := suite.Point().Mul(msg.context.H[i], msg.proof.r[2*i+1])
+		ti11 := suite.Point().Add(e, f)
 		if !ti11.Equal(msg.proof.t[3*i+2]) {
 			return false
 		}
 	}
 
 	//Check the challenge
-	cs := msg.context.C.Scalar().Zero()
+	cs := suite.Scalar().Zero()
 	for _, ci := range msg.proof.c {
-		cs = msg.context.C.Scalar().Add(cs, ci)
+		cs = suite.Scalar().Add(cs, ci)
 	}
 	if !cs.Equal(msg.proof.cs) {
 		return false
@@ -193,7 +193,7 @@ func ValidateClientMessage(msg ClientMessage) bool {
 	if len(msg.S) != j+2 {
 		return false
 	}
-	if msg.S[0] != msg.context.C.Point().Mul(nil, msg.context.C.Scalar().One()) {
+	if msg.S[0] != suite.Point().Mul(nil, suite.Scalar().One()) {
 		return false
 	}
 	//T0 not empty

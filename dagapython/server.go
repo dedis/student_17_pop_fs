@@ -57,8 +57,8 @@ type ServerProof struct {
 
 /*GenerateCommitment creates the commitment and its opening for the distributed challenge generation*/
 func (server *Server) GenerateCommitment(context ContextEd25519) (commit *Commitment, opening abstract.Scalar, err error) {
-	opening = context.C.Scalar().Pick(random.Stream)
-	com := context.C.Point().Mul(nil, opening)
+	opening = suite.Scalar().Pick(random.Stream)
+	com := suite.Point().Mul(nil, opening)
 	msg, err := com.MarshalBinary()
 	if err != nil {
 		return nil, nil, fmt.Errorf("Error in conversion of commit: %s", err)
@@ -96,13 +96,13 @@ func (server *Server) CheckOpenings(context ContextEd25519, commits []Commitment
 	if len(commits) != len(openings) {
 		return nil, fmt.Errorf("Lengths do not match")
 	}
-	cs = context.C.Scalar().Zero()
+	cs = suite.Scalar().Zero()
 	for i := 0; i < len(commits); i++ {
-		c := context.C.Point().Mul(nil, openings[i])
+		c := suite.Point().Mul(nil, openings[i])
 		if !commits[i].commit.Equal(c) {
 			return nil, fmt.Errorf("Mismatch opening for server " + strconv.Itoa(i))
 		}
-		cs = context.C.Scalar().Add(cs, openings[i])
+		cs = suite.Scalar().Add(cs, openings[i])
 	}
 	return cs, nil
 }
@@ -170,23 +170,23 @@ func (server *Server) ServerProtocol(context ContextEd25519, msg *ServerMessage)
 	//Step 2: Verify the correct behaviour of the client
 	hasher := sha512.New()
 	var writer io.Writer = hasher
-	_, err := context.C.Point().Mul(msg.request.S[0], server.Private).MarshalTo(writer)
+	_, err := suite.Point().Mul(msg.request.S[0], server.Private).MarshalTo(writer)
 	if err != nil {
 		return fmt.Errorf("Error in shared secrets")
 	}
 	hash := hasher.Sum(nil)
-	s := context.C.Scalar().SetBytes(hash[:])
+	s := suite.Scalar().SetBytes(hash[:])
 	var T abstract.Point
 	var proof *ServerProof
 	var e error
 	//Detect a misbehaving client and generate the elements of the server's message accordingly
-	if !msg.request.S[server.index+1].Equal(context.C.Point().Mul(msg.request.S[server.index], s)) {
-		T = context.C.Point().Null()
+	if !msg.request.S[server.index+1].Equal(suite.Point().Mul(msg.request.S[server.index], s)) {
+		T = suite.Point().Null()
 		proof, e = server.GenerateMisbehavingProof(context, msg.request.S[0])
 	} else {
-		inv := context.C.Scalar().Inv(s)
-		exp := context.C.Scalar().Mul(server.r, inv)
-		T = context.C.Point().Mul(msg.tags[len(msg.tags)-1], exp)
+		inv := suite.Scalar().Inv(s)
+		exp := suite.Scalar().Mul(server.r, inv)
+		T = suite.Point().Mul(msg.tags[len(msg.tags)-1], exp)
 		proof, e = server.GenerateServerProof(context, s, T, msg)
 	}
 	if e != nil {
@@ -202,23 +202,23 @@ func (server *Server) ServerProtocol(context ContextEd25519, msg *ServerMessage)
 /*GenerateServerProof creates the server proof for its computations*/
 func (server *Server) GenerateServerProof(context ContextEd25519, s abstract.Scalar, T abstract.Point, msg *ServerMessage) (proof *ServerProof, err error) {
 	//Step 1
-	v1 := context.C.Scalar().Pick(random.Stream)
-	v2 := context.C.Scalar().Pick(random.Stream)
+	v1 := suite.Scalar().Pick(random.Stream)
+	v2 := suite.Scalar().Pick(random.Stream)
 
 	var a abstract.Point
 	if len(msg.tags) == 0 {
-		a = context.C.Point().Mul(msg.request.T0, v1)
+		a = suite.Point().Mul(msg.request.T0, v1)
 	} else {
-		a = context.C.Point().Mul(msg.tags[len(msg.tags)-1], v1)
+		a = suite.Point().Mul(msg.tags[len(msg.tags)-1], v1)
 	}
 
-	exp := context.C.Scalar().Neg(v2)
-	b := context.C.Point().Mul(T, exp)
-	t1 := context.C.Point().Add(a, b)
+	exp := suite.Scalar().Neg(v2)
+	b := suite.Point().Mul(T, exp)
+	t1 := suite.Point().Add(a, b)
 
-	t2 := context.C.Point().Mul(nil, v1)
+	t2 := suite.Point().Mul(nil, v1)
 
-	t3 := context.C.Point().Mul(msg.request.S[server.index+1], v2) //Accesses S[j-1]
+	t3 := suite.Point().Mul(msg.request.S[server.index+1], v2) //Accesses S[j-1]
 
 	//Step 2
 	var Tprevious abstract.Point
@@ -233,7 +233,7 @@ func (server *Server) GenerateServerProof(context ContextEd25519, s abstract.Sca
 	Tprevious.MarshalTo(writer)
 	T.MarshalTo(writer)
 	context.R[server.index].MarshalTo(writer)
-	context.C.Point().Mul(nil, context.C.Scalar().One()).MarshalTo(writer)
+	suite.Point().Mul(nil, suite.Scalar().One()).MarshalTo(writer)
 	msg.request.S[server.index+2].MarshalTo(writer)
 	msg.request.S[server.index+1].MarshalTo(writer)
 	t1.MarshalTo(writer)
@@ -241,13 +241,13 @@ func (server *Server) GenerateServerProof(context ContextEd25519, s abstract.Sca
 	t3.MarshalTo(writer)
 	challenge := hasher.Sum(nil)
 
-	c := context.C.Scalar().SetBytes(challenge[:])
+	c := suite.Scalar().SetBytes(challenge[:])
 	//Step 3
-	d := context.C.Scalar().Mul(c, server.Private)
-	r1 := context.C.Scalar().Sub(v1, d)
+	d := suite.Scalar().Mul(c, server.Private)
+	r1 := suite.Scalar().Sub(v1, d)
 
-	e := context.C.Scalar().Mul(c, s)
-	r2 := context.C.Scalar().Sub(v2, e)
+	e := suite.Scalar().Mul(c, s)
+	r2 := suite.Scalar().Sub(v2, e)
 
 	//Step 4
 	return &ServerProof{
@@ -265,21 +265,21 @@ func VerifyServerProof(context ContextEd25519, i int, msg *ServerMessage) bool {
 	//Step 1
 	var a abstract.Point
 	if i == 0 {
-		a = context.C.Point().Mul(msg.request.T0, msg.proofs[i].r1)
+		a = suite.Point().Mul(msg.request.T0, msg.proofs[i].r1)
 	} else {
-		a = context.C.Point().Mul(msg.tags[i-1], msg.proofs[i].r1)
+		a = suite.Point().Mul(msg.tags[i-1], msg.proofs[i].r1)
 	}
-	exp := context.C.Scalar().Neg(msg.proofs[i].r2)
-	b := context.C.Point().Mul(msg.tags[i], exp)
-	t1 := context.C.Point().Add(a, b)
+	exp := suite.Scalar().Neg(msg.proofs[i].r2)
+	b := suite.Point().Mul(msg.tags[i], exp)
+	t1 := suite.Point().Add(a, b)
 
-	d := context.C.Point().Mul(nil, msg.proofs[i].r1)
-	e := context.C.Point().Mul(context.R[i], msg.proofs[i].c)
-	t2 := context.C.Point().Add(d, e)
+	d := suite.Point().Mul(nil, msg.proofs[i].r1)
+	e := suite.Point().Mul(context.R[i], msg.proofs[i].c)
+	t2 := suite.Point().Add(d, e)
 
-	f := context.C.Point().Mul(msg.request.S[i+1], msg.proofs[i].r2)
-	g := context.C.Point().Mul(msg.request.S[i+2], msg.proofs[i].c)
-	t3 := context.C.Point().Add(f, g)
+	f := suite.Point().Mul(msg.request.S[i+1], msg.proofs[i].r2)
+	g := suite.Point().Mul(msg.request.S[i+2], msg.proofs[i].c)
+	t3 := suite.Point().Add(f, g)
 
 	//Step 2
 	var Tprevious abstract.Point
@@ -293,7 +293,7 @@ func VerifyServerProof(context ContextEd25519, i int, msg *ServerMessage) bool {
 	Tprevious.MarshalTo(writer)
 	msg.tags[i].MarshalTo(writer)
 	context.R[i].MarshalTo(writer)
-	context.C.Point().Mul(nil, context.C.Scalar().One()).MarshalTo(writer)
+	suite.Point().Mul(nil, suite.Scalar().One()).MarshalTo(writer)
 	msg.request.S[i+2].MarshalTo(writer)
 	msg.request.S[i+1].MarshalTo(writer)
 	t1.MarshalTo(writer)
@@ -301,7 +301,7 @@ func VerifyServerProof(context ContextEd25519, i int, msg *ServerMessage) bool {
 	t3.MarshalTo(writer)
 	challenge := hasher.Sum(nil)
 
-	c := context.C.Scalar().SetBytes(challenge[:])
+	c := suite.Scalar().SetBytes(challenge[:])
 
 	if !c.Equal(msg.proofs[i].c) {
 		return false
@@ -312,12 +312,12 @@ func VerifyServerProof(context ContextEd25519, i int, msg *ServerMessage) bool {
 
 /*GenerateMisbehavingProof creates the proof of a misbehaving client*/
 func (server *Server) GenerateMisbehavingProof(context ContextEd25519, Z abstract.Point) (proof *ServerProof, err error) {
-	Zs := context.C.Point().Mul(Z, server.Private)
+	Zs := suite.Point().Mul(Z, server.Private)
 
 	//Step 1
-	v := context.C.Scalar().Pick(random.Stream)
-	t1 := context.C.Point().Mul(Z, v)
-	t2 := context.C.Point().Mul(nil, v)
+	v := suite.Scalar().Pick(random.Stream)
+	t1 := suite.Point().Mul(Z, v)
+	t2 := suite.Point().Mul(nil, v)
 
 	//Step 2
 	hasher := sha512.New()
@@ -325,16 +325,16 @@ func (server *Server) GenerateMisbehavingProof(context ContextEd25519, Z abstrac
 	Zs.MarshalTo(writer)
 	Z.MarshalTo(writer)
 	context.G.Y[server.index].MarshalTo(writer)
-	context.C.Point().Mul(nil, context.C.Scalar().One()).MarshalTo(writer)
+	suite.Point().Mul(nil, suite.Scalar().One()).MarshalTo(writer)
 	t1.MarshalTo(writer)
 	t2.MarshalTo(writer)
 	challenge := hasher.Sum(nil)
 
-	c := context.C.Scalar().SetBytes(challenge[:])
+	c := suite.Scalar().SetBytes(challenge[:])
 
 	//Step 3
-	a := context.C.Scalar().Mul(c, server.Private)
-	r := context.C.Scalar().Sub(v, a)
+	a := suite.Scalar().Mul(c, server.Private)
+	r := suite.Scalar().Sub(v, a)
 
 	//Step 4
 	return &ServerProof{
@@ -354,13 +354,13 @@ func VerifyMisbehavingProof(context ContextEd25519, i int, proof ServerProof, Z 
 	}
 
 	//Step 1
-	a := context.C.Point().Mul(Z, proof.r1)       //r1 = r
-	b := context.C.Point().Mul(proof.t3, proof.c) //t3 = Zs
-	t1 := context.C.Point().Add(a, b)
+	a := suite.Point().Mul(Z, proof.r1)       //r1 = r
+	b := suite.Point().Mul(proof.t3, proof.c) //t3 = Zs
+	t1 := suite.Point().Add(a, b)
 
-	d := context.C.Point().Mul(nil, proof.r1) //r1 = r
-	e := context.C.Point().Mul(context.G.Y[i], proof.c)
-	t2 := context.C.Point().Add(d, e)
+	d := suite.Point().Mul(nil, proof.r1) //r1 = r
+	e := suite.Point().Mul(context.G.Y[i], proof.c)
+	t2 := suite.Point().Add(d, e)
 
 	//Step 2
 	hasher := sha512.New()
@@ -368,12 +368,12 @@ func VerifyMisbehavingProof(context ContextEd25519, i int, proof ServerProof, Z 
 	proof.t3.MarshalTo(writer)
 	Z.MarshalTo(writer)
 	context.G.Y[i].MarshalTo(writer)
-	context.C.Point().Mul(nil, context.C.Scalar().One()).MarshalTo(writer)
+	suite.Point().Mul(nil, suite.Scalar().One()).MarshalTo(writer)
 	t1.MarshalTo(writer)
 	t2.MarshalTo(writer)
 	challenge := hasher.Sum(nil)
 
-	c := context.C.Scalar().SetBytes(challenge[:])
+	c := suite.Scalar().SetBytes(challenge[:])
 
 	if !c.Equal(proof.c) {
 		return false
