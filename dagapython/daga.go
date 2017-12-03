@@ -41,7 +41,7 @@ func ECDSAVerify(public abstract.Point, msg, sig []byte) (err error) {
 	return err
 }
 
-/*ToBytes is a utility funciton to convert a ContextEd25519 into []byte, used in signatures*/
+/*ToBytes is a utility functton to convert a ContextEd25519 into []byte, used in signatures*/
 func (context *ContextEd25519) ToBytes() (data []byte, err error) {
 	temp, e := PointArrayToBytes(&context.G.X)
 	if e != nil {
@@ -70,7 +70,7 @@ func (context *ContextEd25519) ToBytes() (data []byte, err error) {
 	return data, nil
 }
 
-/*PointArrayToBytes is a utility funciton to convert a abstract.Point array into []byte, used in signatures*/
+/*PointArrayToBytes is a utility function to convert a abstract.Point array into []byte, used in signatures*/
 func PointArrayToBytes(array *[]abstract.Point) (data []byte, err error) {
 	for _, p := range *array {
 		temp, e := p.MarshalBinary()
@@ -82,7 +82,7 @@ func PointArrayToBytes(array *[]abstract.Point) (data []byte, err error) {
 	return data, nil
 }
 
-/*ScalarArrayToBytes is a utility funciton to convert a abstract.Scalar array into []byte, used in signatures*/
+/*ScalarArrayToBytes is a utility function to convert a abstract.Scalar array into []byte, used in signatures*/
 func ScalarArrayToBytes(array *[]abstract.Scalar) (data []byte, err error) {
 	for _, s := range *array {
 		temp, e := s.MarshalBinary()
