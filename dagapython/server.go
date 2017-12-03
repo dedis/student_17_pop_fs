@@ -57,7 +57,7 @@ type ServerProof struct {
 }
 
 /*GenerateCommitment creates the commitment and its opening for the distributed challenge generation*/
-func (server *Server) GenerateCommitment(context ContextEd25519) (commit *Commitment, opening abstract.Scalar, err error) {
+func (server *Server) GenerateCommitment(context *ContextEd25519) (commit *Commitment, opening abstract.Scalar, err error) {
 	opening = suite.Scalar().Pick(random.Stream)
 	com := suite.Point().Mul(nil, opening)
 	msg, err := com.MarshalBinary()
@@ -72,14 +72,14 @@ func (server *Server) GenerateCommitment(context ContextEd25519) (commit *Commit
 }
 
 /*VerifyCommitmentSignature verifies that all the commitments are valid and correctly signed*/
-func (server *Server) VerifyCommitmentSignature(context ContextEd25519, commits []Commitment) (err error) {
-	for i, com := range commits {
+func VerifyCommitmentSignature(context *ContextEd25519, commits *[]Commitment) (err error) {
+	for i, com := range *commits {
 		if i != com.Sig.index {
 			return fmt.Errorf("Wrong index")
 		}
 		//TODO: How to check that a point is on the curve?
 
-		//Covnert the commitment and verify the signature
+		//Convert the commitment and verify the signature
 		msg, e := com.commit.MarshalBinary()
 		if e != nil {
 			return fmt.Errorf("Error in conversion of commit for verification: %s", err)
@@ -93,17 +93,17 @@ func (server *Server) VerifyCommitmentSignature(context ContextEd25519, commits 
 }
 
 /*CheckOpenings verifies each opening and returns the computed challenge*/
-func (server *Server) CheckOpenings(context ContextEd25519, commits []Commitment, openings []abstract.Scalar) (cs abstract.Scalar, err error) {
-	if len(commits) != len(openings) {
+func CheckOpenings(context *ContextEd25519, commits *[]Commitment, openings *[]abstract.Scalar) (cs abstract.Scalar, err error) {
+	if len(*commits) != len(*openings) {
 		return nil, fmt.Errorf("Lengths do not match")
 	}
 	cs = suite.Scalar().Zero()
-	for i := 0; i < len(commits); i++ {
-		c := suite.Point().Mul(nil, openings[i])
-		if !commits[i].commit.Equal(c) {
+	for i := 0; i < len(*commits); i++ {
+		c := suite.Point().Mul(nil, (*openings)[i])
+		if !(*commits)[i].commit.Equal(c) {
 			return nil, fmt.Errorf("Mismatch opening for server " + strconv.Itoa(i))
 		}
-		cs = suite.Scalar().Add(cs, openings[i])
+		cs = suite.Scalar().Add(cs, (*openings)[i])
 	}
 	return cs, nil
 }
