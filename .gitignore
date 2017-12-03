@@ -2,3 +2,4 @@ test/*
 github.com/*
 golang.org/*
 gopkg.in/*
+*.test
