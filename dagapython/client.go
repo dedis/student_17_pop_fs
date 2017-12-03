@@ -161,16 +161,12 @@ func (client *Client) GenerateProofResponses(context *ContextEd25519, s abstract
 
 /*VerifyClientProof checks the validity of a client's proof*/
 func VerifyClientProof(msg ClientMessage) bool {
+	check := ValidateClientMessage(msg)
+	if !check {
+		return false
+	}
+
 	n := len(msg.context.G.X)
-	if len(msg.proof.c) != n {
-		return false
-	}
-	if len(msg.proof.r) != 2*n {
-		return false
-	}
-	if len(msg.proof.t) != 3*n {
-		return false
-	}
 
 	//Check the commitments
 	for i := 0; i < n; i++ {
@@ -214,11 +210,11 @@ func ValidateClientMessage(msg ClientMessage) bool {
 	i := len(msg.context.G.X)
 	//Number of servers
 	j := len(msg.context.G.Y)
-	//A commimtment for each server exists and the second element is the generator S=(Z,g,S1,..,Sj)
+	//A commitment for each server exists and the second element is the generator S=(Z,g,S1,..,Sj)
 	if len(msg.S) != j+2 {
 		return false
 	}
-	if msg.S[0] != suite.Point().Mul(nil, suite.Scalar().One()) {
+	if !msg.S[1].Equal(suite.Point().Mul(nil, suite.Scalar().One())) {
 		return false
 	}
 	//T0 not empty
@@ -226,7 +222,7 @@ func ValidateClientMessage(msg ClientMessage) bool {
 		return false
 	}
 	//Proof fields have the correct size
-	if len(msg.proof.c) != j || len(msg.proof.r) != 2*i || len(msg.proof.t) != 3*i || msg.proof.cs == nil {
+	if len(msg.proof.c) != i || len(msg.proof.r) != 2*i || len(msg.proof.t) != 3*i || msg.proof.cs == nil {
 		return false
 	}
 	return true

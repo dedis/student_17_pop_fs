@@ -183,6 +183,74 @@ func TestVerifyClientProof(t *testing.T) {
 		t.Error("Cannot verify client proof")
 	}
 
+	//Modify the value of some commitments
+	ScratchMsg := ClientMsg
+	i := rand.Intn(len(clients))
+	ttemp := ScratchMsg.proof.t[3*i].Clone()
+	ScratchMsg.proof.t[3*i] = suite.Point().Null()
+	check = VerifyClientProof(ScratchMsg)
+	if check {
+		t.Errorf("Incorrect check of t at index %d", 3*i)
+	}
+	ScratchMsg.proof.t[3*i] = ttemp.Clone()
+
+	ttemp = ScratchMsg.proof.t[3*i+1].Clone()
+	ScratchMsg.proof.t[3*i+1] = suite.Point().Null()
+	check = VerifyClientProof(ScratchMsg)
+	if check {
+		t.Errorf("Incorrect check of t at index %d", 3*i+1)
+	}
+	ScratchMsg.proof.t[3*i+1] = ttemp.Clone()
+
+	ttemp = ScratchMsg.proof.t[3*i+2].Clone()
+	ScratchMsg.proof.t[3*i+2] = suite.Point().Null()
+	check = VerifyClientProof(ScratchMsg)
+	if check {
+		t.Errorf("Incorrect check of t at index %d", 3*i+2)
+	}
+	ScratchMsg.proof.t[3*i+2] = ttemp.Clone()
+
+	//Modify the value of the challenge
+	ScratchMsg.proof.cs = suite.Scalar().Zero()
+	check = VerifyClientProof(ScratchMsg)
+	if check {
+		t.Errorf("Incorrect check of the challenge")
+	}
+}
+
+func TestValidateClientMessage(t *testing.T) {
+	clients, servers, context, _ := generateTestContext(rand.Intn(10)+1, rand.Intn(10)+1)
+	T0, S, s, _ := clients[0].CreateRequest(context)
+	tproof, v, w := clients[0].GenerateProofCommitments(context, T0, s)
+
+	//Dumb challenge generation
+	cs := suite.Scalar().Pick(random.Stream)
+	msg, _ := cs.MarshalBinary()
+	var sigs []ServerSignature
+	//Make each test server sign the challenge
+	for _, server := range servers {
+		sig, e := ECDSASign(server.Private, msg)
+		if e != nil {
+			t.Errorf("Cannot sign the challenge for server %d", server.index)
+		}
+		sigs = append(sigs, ServerSignature{index: server.index, sig: sig})
+	}
+	challenge := Challenge{cs: cs, Sigs: sigs}
+
+	//Generate the final proof
+	c, r, _ := clients[0].GenerateProofResponses(context, s, &challenge, v, w)
+
+	ClientMsg := ClientMessage{context: ContextEd25519{G: Members{X: context.G.X, Y: context.G.Y}, R: context.R, H: context.H},
+		T0:    T0,
+		S:     S,
+		proof: ClientProof{c: *c, cs: cs, r: *r, t: *tproof}}
+
+	//Normal execution
+	check := VerifyClientProof(ClientMsg)
+	if !check {
+		t.Error("Cannot verify client proof")
+	}
+
 	//Modifying the length of various elements
 	ScratchMsg := ClientMsg
 	ScratchMsg.proof.c = append(ScratchMsg.proof.c, suite.Scalar().Pick(random.Stream))
@@ -220,37 +288,31 @@ func TestVerifyClientProof(t *testing.T) {
 		t.Errorf("Incorrect length check for t: %d instead of %d", len(ScratchMsg.proof.c), len(clients))
 	}
 
-	//Modify the value of some commitments
 	ScratchMsg = ClientMsg
-	i := rand.Intn(len(clients))
-	ttemp := ScratchMsg.proof.t[3*i].Clone()
-	ScratchMsg.proof.t[3*i] = suite.Point().Null()
+	ScratchMsg.S = append(ScratchMsg.S, suite.Point().Mul(nil, suite.Scalar().Pick(random.Stream)))
 	check = VerifyClientProof(ScratchMsg)
 	if check {
-		t.Errorf("Incorrect check of t at index %d", 3*i)
+		t.Errorf("Incorrect length check for S: %d instead of %d", len(ScratchMsg.S), len(servers)+2)
 	}
-	ScratchMsg.proof.t[3*i] = ttemp.Clone()
-
-	ttemp = ScratchMsg.proof.t[3*i+1].Clone()
-	ScratchMsg.proof.t[3*i+1] = suite.Point().Null()
+	ScratchMsg.S = ScratchMsg.S[:len(servers)+1]
 	check = VerifyClientProof(ScratchMsg)
 	if check {
-		t.Errorf("Incorrect check of t at index %d", 3*i+1)
+		t.Errorf("Incorrect length check for S: %d instead of %d", len(ScratchMsg.S), len(servers)+2)
 	}
-	ScratchMsg.proof.t[3*i+1] = ttemp.Clone()
 
-	ttemp = ScratchMsg.proof.t[3*i+2].Clone()
-	ScratchMsg.proof.t[3*i+2] = suite.Point().Null()
+	//Modify the value of the generator in S[1]
+	ScratchMsg = ClientMsg
+	ScratchMsg.S[1] = suite.Point().Mul(nil, suite.Scalar().Pick(random.Stream))
 	check = VerifyClientProof(ScratchMsg)
 	if check {
-		t.Errorf("Incorrect check of t at index %d", 3*i+2)
+		t.Errorf("Incorrect check for the generator in S[1]")
 	}
-	ScratchMsg.proof.t[3*i+2] = ttemp.Clone()
+	ScratchMsg.S[1] = suite.Point().Mul(nil, suite.Scalar().One())
 
-	//Modify the value of the challenge
-	ScratchMsg.proof.cs = suite.Scalar().Zero()
+	//Remove T0
+	ScratchMsg.T0 = nil
 	check = VerifyClientProof(ScratchMsg)
 	if check {
-		t.Errorf("Incorrect check of the challenge")
+		t.Errorf("Accepts a empty T0")
 	}
 }
