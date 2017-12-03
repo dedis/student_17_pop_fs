@@ -33,7 +33,7 @@ type ClientProof struct {
 }
 
 /*CreateRequest generates the elements for the authentication request (T0, S) and the generation of the client's proof(s)*/
-func (client *Client) CreateRequest(context ContextEd25519) (T0 abstract.Point, S []abstract.Point, s abstract.Scalar, err error) {
+func (client *Client) CreateRequest(context *ContextEd25519) (T0 abstract.Point, S []abstract.Point, s abstract.Scalar, err error) {
 	//Step 1: generate ephemeral DH keys
 	z := suite.Scalar().Pick(random.Stream)
 	Z := suite.Point().Mul(nil, z)
@@ -60,11 +60,13 @@ func (client *Client) CreateRequest(context ContextEd25519) (T0 abstract.Point, 
 	T0 = suite.Point().Mul(context.H[client.index], exp)
 
 	//Computes the commitments
-	S = make([]abstract.Point, len(context.G.Y))
+	S = make([]abstract.Point, len(context.G.Y)+1)
 	exp = suite.Scalar().One()
 	for i := 0; i < len(context.G.Y)+1; i++ {
 		S[i] = suite.Point().Mul(nil, exp)
-		exp.Mul(exp, suite.Scalar().SetBytes(shared[i]))
+		if i != len(context.G.Y) {
+			exp.Mul(exp, suite.Scalar().SetBytes(shared[i]))
+		}
 	}
 	s = exp
 
