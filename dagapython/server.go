@@ -159,23 +159,23 @@ func (server *Server) ServerProtocol(context ContextEd25519, msg *ServerMessage)
 	}
 	if len(msg.indexes) != 0 {
 		for i := 0; i < len(msg.indexes); i++ {
-			temp, e := msg.tags[i].MarshalBinary()
-			if e != nil {
-				return fmt.Errorf("Error in tags: %s", e)
+			temp, err := msg.tags[i].MarshalBinary()
+			if err != nil {
+				return fmt.Errorf("Error in tags: %s", err)
 			}
 			data = append(data, temp...)
 
-			temp, e = msg.proofs[i].ToBytes()
-			if e != nil {
-				return fmt.Errorf("Error in proofs: %s", e)
+			temp, err = msg.proofs[i].ToBytes()
+			if err != nil {
+				return fmt.Errorf("Error in proofs: %s", err)
 			}
 			data = append(data, temp...)
 
 			data = append(data, []byte(strconv.Itoa(msg.indexes[i]))...)
 
-			e = ECDSAVerify(context.G.Y[msg.sigs[i].index], data, msg.sigs[i].sig)
-			if e != nil {
-				return fmt.Errorf("Error in signature: "+strconv.Itoa(i)+"\n%s", e)
+			err = ECDSAVerify(context.G.Y[msg.sigs[i].index], data, msg.sigs[i].sig)
+			if err != nil {
+				return fmt.Errorf("Error in signature: "+strconv.Itoa(i)+"\n%s", err)
 			}
 		}
 	}
