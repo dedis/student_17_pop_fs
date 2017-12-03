@@ -37,7 +37,7 @@ func TestECDSAVerify(t *testing.T) {
 	}
 
 	//Signature modification
-	newsig := append(sig, []byte("A")...)
+	newsig := append([]byte("A"), sig...)
 	newsig = newsig[:len(sig)]
 	check = ECDSAVerify(suite.Point().Mul(nil, priv), fake, sig)
 	if check == nil {

@@ -109,7 +109,7 @@ func (server *Server) CheckOpenings(context ContextEd25519, commits []Commitment
 }
 
 /*CheckUpdateChallenge verifies that all the previous servers computed the same challenges and that their signatures are valid
-It also adds the server's signature to the list if it the round-robin is not completed (the challenge has not yet made it back to the leader)*/
+It also adds the server's signature to the list if the round-robin is not completed (the challenge has not yet made it back to the leader)*/
 func (server *Server) CheckUpdateChallenge(context ContextEd25519, cs abstract.Scalar, challenge *Challenge) (err error) {
 	//Check the signatures
 	msg, e := challenge.cs.MarshalBinary()

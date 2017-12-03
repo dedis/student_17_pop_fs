@@ -81,42 +81,45 @@ func (client *Client) CreateRequest(context *ContextEd25519) (T0 abstract.Point,
 }
 
 //GenerateProofCommitments creates and returns the client's commitments t and the random wieghts w
-func (client *Client) GenerateProofCommitments(context ContextEd25519, T0 abstract.Point, s abstract.Scalar) (t []abstract.Point, v, w []abstract.Scalar) {
+func (client *Client) GenerateProofCommitments(context *ContextEd25519, T0 abstract.Point, s abstract.Scalar) (t *[]abstract.Point, v, w *[]abstract.Scalar) {
 	//Generates w randomly except for w[client.index] = 0
-	w = make([]abstract.Scalar, len(context.H))
-	for i := range w {
-		w[i] = suite.Scalar().Pick(random.Stream)
+	wtemp := make([]abstract.Scalar, len(context.H))
+	w = &wtemp
+	for i := range *w {
+		(*w)[i] = suite.Scalar().Pick(random.Stream)
 	}
-	w[client.index] = suite.Scalar().Zero()
+	(*w)[client.index] = suite.Scalar().Zero()
 
 	//Generates random v (2 per client)
-	v = make([]abstract.Scalar, 2*len(context.H))
-	for i := 0; i < len(v); i++ {
-		v[i] = suite.Scalar().Pick(random.Stream)
+	vtemp := make([]abstract.Scalar, 2*len(context.H))
+	v = &vtemp
+	for i := 0; i < len(*v); i++ {
+		(*v)[i] = suite.Scalar().Pick(random.Stream)
 	}
 
 	//Generates the commitments t (3 per clients)
-	t = make([]abstract.Point, 3*len(context.H))
+	ttemp := make([]abstract.Point, 3*len(context.H))
+	t = &ttemp
 	for i := 0; i < len(context.H); i++ {
-		a := suite.Point().Mul(context.H[i], w[i])
-		b := suite.Point().Mul(nil, v[2*i])
-		t[3*i] = suite.Point().Add(a, b)
+		a := suite.Point().Mul(context.G.X[i], (*w)[i])
+		b := suite.Point().Mul(nil, (*v)[2*i])
+		(*t)[3*i] = suite.Point().Add(a, b)
 
 		Sm := suite.Point().Mul(nil, s)
-		c := suite.Point().Mul(Sm, w[i])
-		d := suite.Point().Mul(nil, v[2*i+1])
-		t[3*i+1] = suite.Point().Add(c, d)
+		c := suite.Point().Mul(Sm, (*w)[i])
+		d := suite.Point().Mul(nil, (*v)[2*i+1])
+		(*t)[3*i+1] = suite.Point().Add(c, d)
 
-		e := suite.Point().Mul(T0, w[i])
-		f := suite.Point().Mul(context.H[i], v[2*i+1])
-		t[3*i+2] = suite.Point().Add(e, f)
+		e := suite.Point().Mul(T0, (*w)[i])
+		f := suite.Point().Mul(context.H[i], (*v)[2*i+1])
+		(*t)[3*i+2] = suite.Point().Add(e, f)
 	}
 
 	return t, v, w
 }
 
 //GenerateProofResponses creates the responses to the challenge cs sent by the servers
-func (client *Client) GenerateProofResponses(context ContextEd25519, s abstract.Scalar, challenge *Challenge, w, v []abstract.Scalar) (c, r []abstract.Scalar, err error) {
+func (client *Client) GenerateProofResponses(context *ContextEd25519, s abstract.Scalar, challenge *Challenge, v, w *[]abstract.Scalar) (c, r *[]abstract.Scalar, err error) {
 	//Check challenge signatures
 	msg, e := challenge.cs.MarshalBinary()
 	if e != nil {
@@ -130,20 +133,28 @@ func (client *Client) GenerateProofResponses(context ContextEd25519, s abstract.
 	}
 
 	//Generates the c array
-	copy(c, w)
+	var ctemp []abstract.Scalar
+	for _, temp := range *w {
+		ctemp = append(ctemp, temp)
+	}
+	c = &ctemp
 	sum := suite.Scalar().Zero()
-	for _, i := range w {
+	for _, i := range *w {
 		sum = suite.Scalar().Add(sum, i)
 	}
-	c[client.index] = suite.Scalar().Sub(challenge.cs, sum)
+	(*c)[client.index] = suite.Scalar().Sub(challenge.cs, sum)
 
 	//Generates the responses
-	copy(r, v)
-	a := suite.Scalar().Mul(c[client.index], client.Private)
-	r[2*client.index] = suite.Scalar().Sub(v[2*client.index], a)
+	var rtemp []abstract.Scalar
+	for _, temp := range *v {
+		rtemp = append(rtemp, temp)
+	}
+	r = &rtemp
+	a := suite.Scalar().Mul((*c)[client.index], client.Private)
+	(*r)[2*client.index] = suite.Scalar().Sub((*v)[2*client.index], a)
 
-	b := suite.Scalar().Mul(c[client.index], s)
-	r[2*client.index+1] = suite.Scalar().Sub(v[2*client.index+1], b)
+	b := suite.Scalar().Mul((*c)[client.index], s)
+	(*r)[2*client.index+1] = suite.Scalar().Sub((*v)[2*client.index+1], b)
 
 	return c, r, nil
 }
