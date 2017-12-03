@@ -316,3 +316,75 @@ func TestValidateClientMessage(t *testing.T) {
 		t.Errorf("Accepts a empty T0")
 	}
 }
+
+func TestToBytes_ClientMessage(t *testing.T) {
+	clients, servers, context, _ := generateTestContext(rand.Intn(10)+1, rand.Intn(10)+1)
+	T0, S, s, _ := clients[0].CreateRequest(context)
+	tproof, v, w := clients[0].GenerateProofCommitments(context, T0, s)
+
+	//Dumb challenge generation
+	cs := suite.Scalar().Pick(random.Stream)
+	msg, _ := cs.MarshalBinary()
+	var sigs []ServerSignature
+	//Make each test server sign the challenge
+	for _, server := range servers {
+		sig, e := ECDSASign(server.Private, msg)
+		if e != nil {
+			t.Errorf("Cannot sign the challenge for server %d", server.index)
+		}
+		sigs = append(sigs, ServerSignature{index: server.index, sig: sig})
+	}
+	challenge := Challenge{cs: cs, Sigs: sigs}
+
+	//Generate the final proof
+	c, r, _ := clients[0].GenerateProofResponses(context, s, &challenge, v, w)
+
+	ClientMsg := ClientMessage{context: ContextEd25519{G: Members{X: context.G.X, Y: context.G.Y}, R: context.R, H: context.H},
+		T0:    T0,
+		S:     S,
+		proof: ClientProof{c: *c, cs: cs, r: *r, t: *tproof}}
+
+	//Normal execution
+	data, err := ClientMsg.ToBytes()
+	if err != nil {
+		t.Error("Cannot convert valid Client Message to bytes")
+	}
+	if data == nil {
+		t.Error("Data is empty for a correct Client Message")
+	}
+}
+
+func TestToBytes_ClientProof(t *testing.T) {
+	clients, servers, context, _ := generateTestContext(rand.Intn(10)+1, rand.Intn(10)+1)
+	T0, _, s, _ := clients[0].CreateRequest(context)
+	tproof, v, w := clients[0].GenerateProofCommitments(context, T0, s)
+
+	//Dumb challenge generation
+	cs := suite.Scalar().Pick(random.Stream)
+	msg, _ := cs.MarshalBinary()
+	var sigs []ServerSignature
+	//Make each test server sign the challenge
+	for _, server := range servers {
+		sig, e := ECDSASign(server.Private, msg)
+		if e != nil {
+			t.Errorf("Cannot sign the challenge for server %d", server.index)
+		}
+		sigs = append(sigs, ServerSignature{index: server.index, sig: sig})
+	}
+	challenge := Challenge{cs: cs, Sigs: sigs}
+
+	//Generate the final proof
+	c, r, _ := clients[0].GenerateProofResponses(context, s, &challenge, v, w)
+
+	proof := ClientProof{c: *c, cs: cs, r: *r, t: *tproof}
+
+	//Normal execution
+	data, err := proof.ToBytes()
+	if err != nil {
+		t.Error("Cannot convert valid proof to bytes")
+	}
+	if data == nil {
+		t.Error("Data is empty for a correct proof")
+	}
+
+}
