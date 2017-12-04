@@ -112,3 +112,30 @@ func TestCheckOpenings(t *testing.T) {
 		t.Error("cs not nil on opening error")
 	}
 }
+
+func TestCheckUpdateChallenge(t *testing.T) {
+	_, servers, context, _ := generateTestContext(rand.Intn(10)+1, rand.Intn(10)+1)
+
+	//Generate commitments
+	var commits []Commitment
+	var openings []abstract.Scalar
+	for i := 0; i < len(servers); i++ {
+		commit, open, _ := servers[i].GenerateCommitment(context)
+		commits = append(commits, *commit)
+		openings = append(openings, open)
+	}
+
+	//Normal execution
+	cs, _ := CheckOpenings(context, &commits, &openings)
+
+	challenge := Challenge{Sigs: nil, cs: cs}
+
+	//Normal execution
+	err := servers[0].CheckUpdateChallenge(context, cs, &challenge)
+	if err != nil {
+		t.Error("Cannot update the challenge")
+	}
+	if len(challenge.Sigs) != 1 {
+		t.Error("Did not add the signature")
+	}
+}
