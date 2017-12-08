@@ -7,14 +7,13 @@ import (
 	"strconv"
 
 	"gopkg.in/dedis/crypto.v0/abstract"
-	"gopkg.in/dedis/crypto.v0/ed25519"
 	"gopkg.in/dedis/crypto.v0/random"
 )
 
 /*Server is used to store the server's private key and index.
 All the server's methods are attached to it */
 type Server struct {
-	Private abstract.Scalar
+	private abstract.Scalar
 	index   int
 	r       abstract.Scalar //Per round secret
 }
@@ -64,7 +63,7 @@ func (server *Server) GenerateCommitment(context *ContextEd25519) (commit *Commi
 	if err != nil {
 		return nil, nil, fmt.Errorf("Error in conversion of commit: %s", err)
 	}
-	sig, err := ECDSASign(server.Private, msg)
+	sig, err := ECDSASign(server.private, msg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("Error in commit signature generation: %s", err)
 	}
@@ -111,12 +110,18 @@ func CheckOpenings(context *ContextEd25519, commits *[]Commitment, openings *[]a
 /*CheckUpdateChallenge verifies that all the previous servers computed the same challenges and that their signatures are valid
 It also adds the server's signature to the list if the round-robin is not completed (the challenge has not yet made it back to the leader)*/
 func (server *Server) CheckUpdateChallenge(context *ContextEd25519, cs abstract.Scalar, challenge *Challenge) (err error) {
-	//Check the signatures
+	//Check the signatures and for duplicates
 	msg, e := challenge.cs.MarshalBinary()
 	if e != nil {
 		return fmt.Errorf("Error in challenge conversion: %s", e)
 	}
+	encountered := map[int]bool{}
 	for _, sig := range challenge.Sigs {
+		if encountered[sig.index] == true {
+			return fmt.Errorf("Duplicate signature")
+		}
+		encountered[sig.index] = true
+
 		e = ECDSAVerify(context.G.Y[sig.index], msg, sig.sig)
 		if e != nil {
 			return fmt.Errorf("%s", e)
@@ -132,7 +137,7 @@ func (server *Server) CheckUpdateChallenge(context *ContextEd25519, cs abstract.
 	if len(challenge.Sigs) == len(context.G.Y) {
 		return nil
 	}
-	sig, e := ECDSASign(server.Private, msg)
+	sig, e := ECDSASign(server.private, msg)
 	if e != nil {
 		return e
 	}
@@ -142,7 +147,7 @@ func (server *Server) CheckUpdateChallenge(context *ContextEd25519, cs abstract.
 }
 
 /*ServerProtocol runs the server part of DAGA upon receiving a message from either a server or a client*/
-func (server *Server) ServerProtocol(context ContextEd25519, msg *ServerMessage) error {
+func (server *Server) ServerProtocol(context *ContextEd25519, msg *ServerMessage) error {
 	//Step 1
 	//Verify that the message is correctly formed
 	if !ValidateClientMessage(msg.request) {
@@ -189,7 +194,7 @@ func (server *Server) ServerProtocol(context ContextEd25519, msg *ServerMessage)
 		for i, p := range msg.proofs {
 			var valid bool
 			if p.r2 == nil {
-				valid = VerifyMisbehavingProof(context, i, p, msg.request.S[0])
+				valid = VerifyMisbehavingProof(context, i, &p, msg.request.S[0])
 			} else {
 				valid = VerifyServerProof(context, i, msg)
 			}
@@ -202,7 +207,7 @@ func (server *Server) ServerProtocol(context ContextEd25519, msg *ServerMessage)
 	//Step 2: Verify the correct behaviour of the client
 	hasher := sha512.New()
 	var writer io.Writer = hasher
-	_, err := suite.Point().Mul(msg.request.S[0], server.Private).MarshalTo(writer)
+	_, err := suite.Point().Mul(msg.request.S[0], server.private).MarshalTo(writer)
 	if err != nil {
 		return fmt.Errorf("Error in shared secrets")
 	}
@@ -211,13 +216,20 @@ func (server *Server) ServerProtocol(context ContextEd25519, msg *ServerMessage)
 	var T abstract.Point
 	var proof *ServerProof
 	//Detect a misbehaving client and generate the elements of the server's message accordingly
-	if !msg.request.S[server.index+1].Equal(suite.Point().Mul(msg.request.S[server.index], s)) {
+	if !msg.request.S[server.index+2].Equal(suite.Point().Mul(msg.request.S[server.index+1], s)) {
 		T = suite.Point().Null()
 		proof, e = server.GenerateMisbehavingProof(context, msg.request.S[0])
 	} else {
 		inv := suite.Scalar().Inv(s)
+		if server.r == nil {
+			return fmt.Errorf("r is nil")
+		}
 		exp := suite.Scalar().Mul(server.r, inv)
-		T = suite.Point().Mul(msg.tags[len(msg.tags)-1], exp)
+		if len(msg.tags) == 0 {
+			T = suite.Point().Mul(msg.request.T0, exp)
+		} else {
+			T = suite.Point().Mul(msg.tags[len(msg.tags)-1], exp)
+		}
 		proof, e = server.GenerateServerProof(context, s, T, msg)
 	}
 	if e != nil {
@@ -239,7 +251,7 @@ func (server *Server) ServerProtocol(context ContextEd25519, msg *ServerMessage)
 
 	data = append(data, []byte(strconv.Itoa(server.index))...)
 
-	sign, e := ECDSASign(server.Private, data)
+	sign, e := ECDSASign(server.private, data)
 	if e != nil {
 		return fmt.Errorf("Error in own signature: %s", e)
 	}
@@ -256,7 +268,7 @@ func (server *Server) ServerProtocol(context ContextEd25519, msg *ServerMessage)
 }
 
 /*GenerateServerProof creates the server proof for its computations*/
-func (server *Server) GenerateServerProof(context ContextEd25519, s abstract.Scalar, T abstract.Point, msg *ServerMessage) (proof *ServerProof, err error) {
+func (server *Server) GenerateServerProof(context *ContextEd25519, s abstract.Scalar, T abstract.Point, msg *ServerMessage) (proof *ServerProof, err error) {
 	//Step 1
 	v1 := suite.Scalar().Pick(random.Stream)
 	v2 := suite.Scalar().Pick(random.Stream)
@@ -299,7 +311,7 @@ func (server *Server) GenerateServerProof(context ContextEd25519, s abstract.Sca
 
 	c := suite.Scalar().SetBytes(challenge[:])
 	//Step 3
-	d := suite.Scalar().Mul(c, server.Private)
+	d := suite.Scalar().Mul(c, server.private)
 	r1 := suite.Scalar().Sub(v1, d)
 
 	e := suite.Scalar().Mul(c, s)
@@ -317,7 +329,7 @@ func (server *Server) GenerateServerProof(context ContextEd25519, s abstract.Sca
 }
 
 /*VerifyServerProof verifies a server proof*/
-func VerifyServerProof(context ContextEd25519, i int, msg *ServerMessage) bool {
+func VerifyServerProof(context *ContextEd25519, i int, msg *ServerMessage) bool {
 	//Step 1
 	var a abstract.Point
 	if i == 0 {
@@ -367,8 +379,8 @@ func VerifyServerProof(context ContextEd25519, i int, msg *ServerMessage) bool {
 }
 
 /*GenerateMisbehavingProof creates the proof of a misbehaving client*/
-func (server *Server) GenerateMisbehavingProof(context ContextEd25519, Z abstract.Point) (proof *ServerProof, err error) {
-	Zs := suite.Point().Mul(Z, server.Private)
+func (server *Server) GenerateMisbehavingProof(context *ContextEd25519, Z abstract.Point) (proof *ServerProof, err error) {
+	Zs := suite.Point().Mul(Z, server.private)
 
 	//Step 1
 	v := suite.Scalar().Pick(random.Stream)
@@ -389,7 +401,7 @@ func (server *Server) GenerateMisbehavingProof(context ContextEd25519, Z abstrac
 	c := suite.Scalar().SetBytes(challenge[:])
 
 	//Step 3
-	a := suite.Scalar().Mul(c, server.Private)
+	a := suite.Scalar().Mul(c, server.private)
 	r := suite.Scalar().Sub(v, a)
 
 	//Step 4
@@ -404,7 +416,7 @@ func (server *Server) GenerateMisbehavingProof(context ContextEd25519, Z abstrac
 }
 
 /*VerifyMisbehavingProof verifies a proof of a misbehaving client*/
-func VerifyMisbehavingProof(context ContextEd25519, i int, proof ServerProof, Z abstract.Point) bool {
+func VerifyMisbehavingProof(context *ContextEd25519, i int, proof *ServerProof, Z abstract.Point) bool {
 	if proof.r2 != nil {
 		return false
 	}
@@ -441,9 +453,8 @@ func VerifyMisbehavingProof(context ContextEd25519, i int, proof ServerProof, Z 
 /*GenerateNewRoundSecret creates a new secret for the server, erasing the previous one.
 It returns the commitment to that secret to be included in the context*/
 func (server *Server) GenerateNewRoundSecret() (R abstract.Point) {
-	var C = ed25519.Curve{}
-	server.r = C.Scalar().Pick(random.Stream)
-	return C.Point().Mul(nil, server.r)
+	server.r = suite.Scalar().Pick(random.Stream)
+	return suite.Point().Mul(nil, server.r)
 }
 
 /*ToBytes is a helper function used to convert a ServerProof into []byte to be used in signatures*/
@@ -478,11 +489,14 @@ func (proof *ServerProof) ToBytes() (data []byte, err error) {
 	}
 	data = append(data, temp...)
 
-	temp, e = proof.r2.MarshalBinary()
-	if e != nil {
-		return nil, fmt.Errorf("Error in r2: %s", e)
+	//Need to test if r2 == nil (Misbehaving)
+	if proof.r2 != nil {
+		temp, e = proof.r2.MarshalBinary()
+		if e != nil {
+			return nil, fmt.Errorf("Error in r2: %s", e)
+		}
+		data = append(data, temp...)
 	}
-	data = append(data, temp...)
 
 	return data, nil
 }

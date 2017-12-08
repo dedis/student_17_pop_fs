@@ -45,14 +45,17 @@ func generateTestContext(c, s int) (clients []Client, servers []Server, context 
 
 	//Generates s servers
 	for i := 0; i < s; i++ {
-		new := Server{index: i, Private: suite.Scalar().Pick(random.Stream)}
-		context.G.Y = append(context.G.Y, suite.Point().Mul(nil, new.Private))
+		new := Server{index: i, private: suite.Scalar().Pick(random.Stream)}
+		context.G.Y = append(context.G.Y, suite.Point().Mul(nil, new.private))
 		servers = append(servers, new)
 	}
 
 	//Generates the per-round secrets for the ServerSignature
 	for _, serv := range servers {
 		context.R = append(context.R, serv.GenerateNewRoundSecret())
+		if serv.r == nil {
+			return nil, nil, nil, fmt.Errorf("Error in servers's secret %d", serv.index)
+		}
 	}
 
 	//Generates c clients with their per-round generators

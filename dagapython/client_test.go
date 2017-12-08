@@ -81,7 +81,7 @@ func TestGenerateProofResponses(t *testing.T) {
 	var sigs []ServerSignature
 	//Make each test server sign the challenge
 	for _, server := range servers {
-		sig, e := ECDSASign(server.Private, msg)
+		sig, e := ECDSASign(server.private, msg)
 		if e != nil {
 			t.Errorf("Cannot sign the challenge for server %d", server.index)
 		}
@@ -161,7 +161,7 @@ func TestVerifyClientProof(t *testing.T) {
 	var sigs []ServerSignature
 	//Make each test server sign the challenge
 	for _, server := range servers {
-		sig, e := ECDSASign(server.Private, msg)
+		sig, e := ECDSASign(server.private, msg)
 		if e != nil {
 			t.Errorf("Cannot sign the challenge for server %d", server.index)
 		}
@@ -229,7 +229,7 @@ func TestValidateClientMessage(t *testing.T) {
 	var sigs []ServerSignature
 	//Make each test server sign the challenge
 	for _, server := range servers {
-		sig, e := ECDSASign(server.Private, msg)
+		sig, e := ECDSASign(server.private, msg)
 		if e != nil {
 			t.Errorf("Cannot sign the challenge for server %d", server.index)
 		}
@@ -328,7 +328,7 @@ func TestToBytes_ClientMessage(t *testing.T) {
 	var sigs []ServerSignature
 	//Make each test server sign the challenge
 	for _, server := range servers {
-		sig, e := ECDSASign(server.Private, msg)
+		sig, e := ECDSASign(server.private, msg)
 		if e != nil {
 			t.Errorf("Cannot sign the challenge for server %d", server.index)
 		}
@@ -365,7 +365,7 @@ func TestToBytes_ClientProof(t *testing.T) {
 	var sigs []ServerSignature
 	//Make each test server sign the challenge
 	for _, server := range servers {
-		sig, e := ECDSASign(server.Private, msg)
+		sig, e := ECDSASign(server.private, msg)
 		if e != nil {
 			t.Errorf("Cannot sign the challenge for server %d", server.index)
 		}

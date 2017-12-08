@@ -65,6 +65,13 @@ func TestGenerateTestContext(t *testing.T) {
 		t.Errorf("Wrong handling of negative servers: %d", neg)
 	}
 
+	if servers[0].r == nil {
+		t.Error("Error in generation of r")
+	}
+	if servers[0].private == nil {
+		t.Error("Error in generation of private")
+	}
+
 }
 
 func TestGenerateClientGenerator(t *testing.T) {
