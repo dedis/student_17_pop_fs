@@ -51,11 +51,12 @@ func generateTestContext(c, s int) (clients []Client, servers []Server, context 
 	}
 
 	//Generates the per-round secrets for the ServerSignature
-	for _, serv := range servers {
+	for i, serv := range servers {
 		context.R = append(context.R, serv.GenerateNewRoundSecret())
 		if serv.r == nil {
 			return nil, nil, nil, fmt.Errorf("Error in servers's secret %d", serv.index)
 		}
+		servers[i] = serv
 	}
 
 	//Generates c clients with their per-round generators
