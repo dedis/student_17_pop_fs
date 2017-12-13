@@ -55,7 +55,8 @@ func (client *Client) CreateRequest(context *ContextEd25519) (T0 abstract.Point,
 	//Computes the value of the exponent for the initial linkage tag
 	exp := suite.Scalar().One()
 	for i := 0; i < len(context.G.Y); i++ {
-		exp.Mul(exp, suite.Scalar().SetBytes(shared[i]))
+		rand := suite.Cipher(shared[i])
+		exp.Mul(exp, suite.Scalar().Pick(rand))
 	}
 	T0 = suite.Point().Mul(context.H[client.index], exp)
 
@@ -65,7 +66,8 @@ func (client *Client) CreateRequest(context *ContextEd25519) (T0 abstract.Point,
 	for i := 0; i < len(context.G.Y)+1; i++ {
 		S[i] = suite.Point().Mul(nil, exp)
 		if i != len(context.G.Y) {
-			exp.Mul(exp, suite.Scalar().SetBytes(shared[i]))
+			rand := suite.Cipher(shared[i])
+			exp.Mul(exp, suite.Scalar().Pick(rand))
 		}
 	}
 	s = exp

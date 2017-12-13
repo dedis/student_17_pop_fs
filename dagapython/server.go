@@ -212,7 +212,8 @@ func (server *Server) ServerProtocol(context *ContextEd25519, msg *ServerMessage
 		return fmt.Errorf("Error in shared secrets")
 	}
 	hash := hasher.Sum(nil)
-	s := suite.Scalar().SetBytes(hash[:])
+	rand := suite.Cipher(hash)
+	s := suite.Scalar().Pick(rand)
 	var T abstract.Point
 	var proof *ServerProof
 	//Detect a misbehaving client and generate the elements of the server's message accordingly
@@ -245,7 +246,7 @@ func (server *Server) ServerProtocol(context *ContextEd25519, msg *ServerMessage
 
 	temp, e = proof.ToBytes()
 	if e != nil {
-		return fmt.Errorf("Error in proofs: %s", e)
+		return fmt.Errorf("Error in proof: %s", e)
 	}
 	data = append(data, temp...)
 
@@ -280,9 +281,9 @@ func (server *Server) GenerateServerProof(context *ContextEd25519, s abstract.Sc
 		a = suite.Point().Mul(msg.tags[len(msg.tags)-1], v1)
 	}
 
-	exp := suite.Scalar().Neg(v2)
-	b := suite.Point().Mul(T, exp)
-	t1 := suite.Point().Add(a, b)
+	//exp := suite.Scalar().Neg(v2)
+	b := suite.Point().Mul(T, v2)
+	t1 := suite.Point().Sub(a, b)
 
 	t2 := suite.Point().Mul(nil, v1)
 
@@ -309,9 +310,10 @@ func (server *Server) GenerateServerProof(context *ContextEd25519, s abstract.Sc
 	t3.MarshalTo(writer)
 	challenge := hasher.Sum(nil)
 
-	c := suite.Scalar().SetBytes(challenge[:])
+	rand := suite.Cipher(challenge)
+	c := suite.Scalar().Pick(rand)
 	//Step 3
-	d := suite.Scalar().Mul(c, server.private)
+	d := suite.Scalar().Mul(c, server.r)
 	r1 := suite.Scalar().Sub(v1, d)
 
 	e := suite.Scalar().Mul(c, s)
@@ -337,12 +339,12 @@ func VerifyServerProof(context *ContextEd25519, i int, msg *ServerMessage) bool 
 	} else {
 		a = suite.Point().Mul(msg.tags[i-1], msg.proofs[i].r1)
 	}
-	exp := suite.Scalar().Neg(msg.proofs[i].r2)
-	b := suite.Point().Mul(msg.tags[i], exp)
-	t1 := suite.Point().Add(a, b)
+	//exp := suite.Scalar().Neg(msg.proofs[i].r2)
+	b := suite.Point().Mul(msg.tags[i], msg.proofs[i].r2)
+	t1 := suite.Point().Sub(a, b)
 
 	d := suite.Point().Mul(nil, msg.proofs[i].r1)
-	e := suite.Point().Mul(context.R[i], msg.proofs[i].c)
+	e := suite.Point().Mul(context.R[msg.indexes[i]], msg.proofs[i].c)
 	t2 := suite.Point().Add(d, e)
 
 	f := suite.Point().Mul(msg.request.S[i+1], msg.proofs[i].r2)
@@ -369,7 +371,8 @@ func VerifyServerProof(context *ContextEd25519, i int, msg *ServerMessage) bool 
 	t3.MarshalTo(writer)
 	challenge := hasher.Sum(nil)
 
-	c := suite.Scalar().SetBytes(challenge[:])
+	rand := suite.Cipher(challenge)
+	c := suite.Scalar().Pick(rand)
 
 	if !c.Equal(msg.proofs[i].c) {
 		return false
@@ -398,7 +401,8 @@ func (server *Server) GenerateMisbehavingProof(context *ContextEd25519, Z abstra
 	t2.MarshalTo(writer)
 	challenge := hasher.Sum(nil)
 
-	c := suite.Scalar().SetBytes(challenge[:])
+	rand := suite.Cipher(challenge)
+	c := suite.Scalar().Pick(rand)
 
 	//Step 3
 	a := suite.Scalar().Mul(c, server.private)
@@ -441,7 +445,8 @@ func VerifyMisbehavingProof(context *ContextEd25519, i int, proof *ServerProof, 
 	t2.MarshalTo(writer)
 	challenge := hasher.Sum(nil)
 
-	c := suite.Scalar().SetBytes(challenge[:])
+	rand := suite.Cipher(challenge)
+	c := suite.Scalar().Pick(rand)
 
 	if !c.Equal(proof.c) {
 		return false

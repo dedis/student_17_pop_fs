@@ -4,6 +4,7 @@ import (
 	"crypto/sha512"
 	"io"
 	"math/rand"
+	"strconv"
 	"testing"
 
 	"gopkg.in/dedis/crypto.v0/abstract"
@@ -260,7 +261,8 @@ func TestGenerateServerProof(t *testing.T) {
 	var writer io.Writer = hasher
 	suite.Point().Mul(servMsg.request.S[0], servers[0].private).MarshalTo(writer)
 	hash := hasher.Sum(nil)
-	secret := suite.Scalar().SetBytes(hash[:])
+	rand := suite.Cipher(hash)
+	secret := suite.Scalar().Pick(rand)
 
 	inv := suite.Scalar().Inv(secret)
 	exp := suite.Scalar().Mul(servers[0].r, inv)
@@ -310,7 +312,8 @@ func TestVerifyServerProof(t *testing.T) {
 	var writer io.Writer = hasher
 	suite.Point().Mul(servMsg.request.S[0], servers[0].private).MarshalTo(writer)
 	hash := hasher.Sum(nil)
-	secret := suite.Scalar().SetBytes(hash[:])
+	rand := suite.Cipher(hash)
+	secret := suite.Scalar().Pick(rand)
 
 	inv := suite.Scalar().Inv(secret)
 	exp := suite.Scalar().Mul(servers[0].r, inv)
@@ -319,6 +322,24 @@ func TestVerifyServerProof(t *testing.T) {
 	//Normal execution
 	proof, _ := servers[0].GenerateServerProof(context, secret, T, &servMsg)
 	servMsg.proofs = append(servMsg.proofs, *proof)
+	servMsg.tags = append(servMsg.tags, T)
+	servMsg.indexes = append(servMsg.indexes, servers[0].index)
+	//Sign the message
+	//Signs our message
+	data, _ := servMsg.request.ToBytes()
+	temp, _ := T.MarshalBinary()
+	data = append(data, temp...)
+	temp, _ = proof.ToBytes()
+	data = append(data, temp...)
+	data = append(data, []byte(strconv.Itoa(servers[0].index))...)
+	sign, _ := ECDSASign(servers[0].private, data)
+	signature := ServerSignature{sig: sign, index: servers[0].index}
+	servMsg.sigs = append(servMsg.sigs, signature)
+
+	/*err := servers[1].ServerProtocol(context, &servMsg)
+	if err != nil {
+		t.Errorf("Error in Server Protocol after proof\n%s", err)
+	}*/
 
 	check := VerifyServerProof(context, 0, &servMsg)
 	if !check {
