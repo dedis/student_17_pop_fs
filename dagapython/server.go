@@ -227,9 +227,6 @@ func (server *Server) ServerProtocol(context *ContextEd25519, msg *ServerMessage
 		proof, e = server.GenerateMisbehavingProof(context, msg.request.S[0])
 	} else {
 		inv := suite.Scalar().Inv(s)
-		if server.r == nil {
-			return fmt.Errorf("r is nil")
-		}
 		exp := suite.Scalar().Mul(server.r, inv)
 		if len(msg.tags) == 0 {
 			T = suite.Point().Mul(msg.request.T0, exp)
@@ -275,6 +272,20 @@ func (server *Server) ServerProtocol(context *ContextEd25519, msg *ServerMessage
 
 /*GenerateServerProof creates the server proof for its computations*/
 func (server *Server) GenerateServerProof(context *ContextEd25519, s abstract.Scalar, T abstract.Point, msg *ServerMessage) (proof *ServerProof, err error) {
+	//Input validation
+	if context == nil {
+		return nil, fmt.Errorf("Empty context")
+	}
+	if s == nil {
+		return nil, fmt.Errorf("Empty s")
+	}
+	if T == nil {
+		return nil, fmt.Errorf("Empty T")
+	}
+	if msg == nil {
+		return nil, fmt.Errorf("Empty server message")
+	}
+
 	//Step 1
 	v1 := suite.Scalar().Pick(random.Stream)
 	v2 := suite.Scalar().Pick(random.Stream)
@@ -304,6 +315,7 @@ func (server *Server) GenerateServerProof(context *ContextEd25519, s abstract.Sc
 	//Generating the hash
 	hasher := sha512.New()
 	var writer io.Writer = hasher
+	//hash guarantees that no error are returned on write, so we do not check for error below
 	Tprevious.MarshalTo(writer)
 	T.MarshalTo(writer)
 	context.R[server.index].MarshalTo(writer)
@@ -337,6 +349,20 @@ func (server *Server) GenerateServerProof(context *ContextEd25519, s abstract.Sc
 
 /*VerifyServerProof verifies a server proof*/
 func VerifyServerProof(context *ContextEd25519, i int, msg *ServerMessage) bool {
+	//Input checks
+	if context == nil || msg == nil {
+		return false
+	}
+
+	if i >= len(msg.proofs) {
+		return false
+	}
+
+	//Verify format of the proof
+	if msg.proofs[i].c == nil || msg.proofs[i].t1 == nil || msg.proofs[i].t2 == nil || msg.proofs[i].t3 == nil || msg.proofs[i].r1 == nil || msg.proofs[i].r2 == nil {
+		return false
+	}
+
 	//Step 1
 	var a abstract.Point
 	if i == 0 {

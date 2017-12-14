@@ -237,6 +237,11 @@ func TestServerProtocol(t *testing.T) {
 		t.Errorf("Error in Server Protocol for server 1\n%s", err)
 	}
 
+	//Check that elements were added to the message
+	if len(servMsg.indexes) != 2 {
+		t.Errorf("Incorrect number of elements added to the message: %d instead of 2", len(servMsg.indexes))
+	}
+
 	//Empty request
 	emptyMsg := ServerMessage{request: ClientMessage{}, proofs: servMsg.proofs, tags: servMsg.tags, sigs: servMsg.sigs, indexes: servMsg.indexes}
 	err = servers[0].ServerProtocol(context, &emptyMsg)
@@ -365,11 +370,38 @@ func TestGenerateServerProof(t *testing.T) {
 		t.Error("Cannot generate normal server proof")
 	}
 
-	// TODO: Checks on the format of the proof
+	//Correct format
+	if proof.t1 == nil || proof.t2 == nil || proof.t3 == nil {
+		t.Error("Incorrect tags in proof")
+	}
+	if proof.c == nil {
+		t.Error("Incorrect challenge")
+	}
+	if proof.r1 == nil || proof.r2 == nil {
+		t.Error("Incorrect responses")
+	}
+
+	//Invalid inputs
+	proof, err = servers[0].GenerateServerProof(nil, secret, T, &servMsg)
+	if err == nil || proof != nil {
+		t.Error("Wrong check: Invalid context")
+	}
+	proof, err = servers[0].GenerateServerProof(context, nil, T, &servMsg)
+	if err == nil || proof != nil {
+		t.Error("Wrong check: Invalid secret")
+	}
+	proof, err = servers[0].GenerateServerProof(context, secret, nil, &servMsg)
+	if err == nil || proof != nil {
+		t.Error("Wrong check: Invalid tag")
+	}
+	proof, err = servers[0].GenerateServerProof(context, secret, T, nil)
+	if err == nil || proof != nil {
+		t.Error("Wrong check: Invalid Server Message")
+	}
 }
 
 func TestVerifyServerProof(t *testing.T) {
-	clients, servers, context, _ := generateTestContext(1, 2)
+	clients, servers, context, _ := generateTestContext(1, 3)
 	T0, S, s, _ := clients[0].CreateRequest(context)
 	tclient, v, w := clients[0].GenerateProofCommitments(context, T0, s)
 
@@ -410,7 +442,7 @@ func TestVerifyServerProof(t *testing.T) {
 	exp := suite.Scalar().Mul(servers[0].r, inv)
 	T := suite.Point().Mul(T0, exp)
 
-	//Normal execution
+	//Generate the proof
 	proof, _ := servers[0].GenerateServerProof(context, secret, T, &servMsg)
 	servMsg.proofs = append(servMsg.proofs, *proof)
 	servMsg.tags = append(servMsg.tags, T)
@@ -432,11 +464,88 @@ func TestVerifyServerProof(t *testing.T) {
 		t.Errorf("Error in Server Protocol after proof\n%s", err)
 	}*/
 
+	//Verify first server proof
 	check := VerifyServerProof(context, 0, &servMsg)
+	if !check {
+		t.Error("Cannot verify first valid normal server proof")
+	}
+
+	servers[1].ServerProtocol(context, &servMsg)
+
+	//Verify any server proof
+	check = VerifyServerProof(context, 1, &servMsg)
 	if !check {
 		t.Error("Cannot verify valid normal server proof")
 	}
-	// TODO: Complete the tests
+
+	saveProof := ServerProof{c: servMsg.proofs[1].c,
+		t1: servMsg.proofs[1].t1,
+		t2: servMsg.proofs[1].t2,
+		t3: servMsg.proofs[1].t3,
+		r1: servMsg.proofs[1].r1,
+		r2: servMsg.proofs[1].r2,
+	}
+
+	//Check inputs
+	servMsg.proofs[1].c = nil
+	check = VerifyServerProof(context, 1, &servMsg)
+	if check {
+		t.Error("Error in challenge verification")
+	}
+	servMsg.proofs[1].c = saveProof.c
+
+	servMsg.proofs[1].t1 = nil
+	check = VerifyServerProof(context, 1, &servMsg)
+	if check {
+		t.Error("Error in t1 verification")
+	}
+	servMsg.proofs[1].t1 = saveProof.t1
+
+	servMsg.proofs[1].t2 = nil
+	check = VerifyServerProof(context, 1, &servMsg)
+	if check {
+		t.Error("Error in t2 verification")
+	}
+	servMsg.proofs[1].t2 = saveProof.t2
+
+	servMsg.proofs[1].t3 = nil
+	check = VerifyServerProof(context, 1, &servMsg)
+	if check {
+		t.Error("Error in t3 verification")
+	}
+	servMsg.proofs[1].t3 = saveProof.t3
+
+	servMsg.proofs[1].r1 = nil
+	check = VerifyServerProof(context, 1, &servMsg)
+	if check {
+		t.Error("Error in r1 verification")
+	}
+	servMsg.proofs[1].r1 = saveProof.r1
+
+	servMsg.proofs[1].r2 = nil
+	check = VerifyServerProof(context, 1, &servMsg)
+	if check {
+		t.Error("Error in r2 verification")
+	}
+	servMsg.proofs[1].r2 = saveProof.r2
+
+	//Invalid context
+	check = VerifyServerProof(nil, 1, &servMsg)
+	if check {
+		t.Error("Wrong check: Invalid context")
+	}
+
+	//nil message
+	check = VerifyServerProof(context, 1, nil)
+	if check {
+		t.Error("Wrong check: Invalid message")
+	}
+
+	//Invalid value of i
+	check = VerifyServerProof(context, 2, &servMsg)
+	if check {
+		t.Error("Wrong check: Invalid i value")
+	}
 }
 
 func TestGenerateMisbehavingProof(t *testing.T) {
@@ -550,7 +659,7 @@ func TestToBytes_ServerProof(t *testing.T) {
 	cs, _ := CheckOpenings(context, &commits, &openings)
 	challenge := Challenge{Sigs: nil, cs: cs}
 
-	//Normal execution
+	//Create challenge
 	for _, server := range servers {
 		server.CheckUpdateChallenge(context, cs, &challenge)
 	}
@@ -570,7 +679,7 @@ func TestToBytes_ServerProof(t *testing.T) {
 	if err != nil || data == nil {
 		t.Error("Cannot convert normal proof")
 	}
-
+	//Normal execution for correct misbehaving proof
 	proof, _ := servers[0].GenerateMisbehavingProof(context, S[0])
 	data, err = proof.ToBytes()
 	if err != nil || data == nil {
