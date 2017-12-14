@@ -212,10 +212,7 @@ func (server *Server) ServerProtocol(context *ContextEd25519, msg *ServerMessage
 	//Step 2: Verify the correct behaviour of the client
 	hasher := sha512.New()
 	var writer io.Writer = hasher
-	_, err := suite.Point().Mul(msg.request.S[0], server.private).MarshalTo(writer)
-	if err != nil {
-		return fmt.Errorf("Error in shared secrets")
-	}
+	suite.Point().Mul(msg.request.S[0], server.private).MarshalTo(writer)
 	hash := hasher.Sum(nil)
 	rand := suite.Cipher(hash)
 	s := suite.Scalar().Pick(rand)
@@ -354,7 +351,7 @@ func VerifyServerProof(context *ContextEd25519, i int, msg *ServerMessage) bool 
 		return false
 	}
 
-	if i >= len(msg.proofs) {
+	if i >= len(msg.proofs) || i < 0 {
 		return false
 	}
 
@@ -414,6 +411,14 @@ func VerifyServerProof(context *ContextEd25519, i int, msg *ServerMessage) bool 
 
 /*GenerateMisbehavingProof creates the proof of a misbehaving client*/
 func (server *Server) GenerateMisbehavingProof(context *ContextEd25519, Z abstract.Point) (proof *ServerProof, err error) {
+	//Input checks
+	if context == nil {
+		return nil, fmt.Errorf("Empty context")
+	}
+	if Z == nil {
+		return nil, fmt.Errorf("Empty Z")
+	}
+
 	Zs := suite.Point().Mul(Z, server.private)
 
 	//Step 1
@@ -452,7 +457,22 @@ func (server *Server) GenerateMisbehavingProof(context *ContextEd25519, Z abstra
 
 /*VerifyMisbehavingProof verifies a proof of a misbehaving client*/
 func VerifyMisbehavingProof(context *ContextEd25519, i int, proof *ServerProof, Z abstract.Point) bool {
+	//Input checks
+	if context == nil || proof == nil || Z == nil {
+		return false
+	}
+
+	if i < 0 || i >= len(context.G.Y) {
+		return false
+	}
+
+	//Check that this is a misbehaving proof
 	if proof.r2 != nil {
+		return false
+	}
+
+	//Verify format of the proof
+	if proof.t1 == nil || proof.t2 == nil || proof.t3 == nil || proof.c == nil || proof.r1 == nil {
 		return false
 	}
 

@@ -546,6 +546,11 @@ func TestVerifyServerProof(t *testing.T) {
 	if check {
 		t.Error("Wrong check: Invalid i value")
 	}
+	check = VerifyServerProof(context, -2, &servMsg)
+	if check {
+		t.Error("Wrong check: Negative i value")
+	}
+
 }
 
 func TestGenerateMisbehavingProof(t *testing.T) {
@@ -565,7 +570,7 @@ func TestGenerateMisbehavingProof(t *testing.T) {
 	cs, _ := CheckOpenings(context, &commits, &openings)
 	challenge := Challenge{Sigs: nil, cs: cs}
 
-	//Normal execution
+	//Generate the challenge
 	for _, server := range servers {
 		server.CheckUpdateChallenge(context, cs, &challenge)
 	}
@@ -580,11 +585,36 @@ func TestGenerateMisbehavingProof(t *testing.T) {
 	if err != nil || proof == nil {
 		t.Error("Cannot generate misbehaving proof")
 	}
+
+	//Correct format
+	if proof.t1 == nil {
+		t.Error("t1 nil for misbehaving proof")
+	}
+	if proof.t2 == nil {
+		t.Error("t2 nil for misbehaving proof")
+	}
+	if proof.t3 == nil {
+		t.Error("t3 nil for misbehaving proof")
+	}
+	if proof.c == nil {
+		t.Error("c nil for misbehaving proof")
+	}
+	if proof.r1 == nil {
+		t.Error("r1 nil for misbehaving proof")
+	}
 	if proof.r2 != nil {
 		t.Error("r2 not nil for misbehaving proof")
 	}
-	// TODO: Additionnal checks
 
+	//Invalid inputs
+	proof, err = servers[0].GenerateMisbehavingProof(nil, clientMessage.S[0])
+	if err == nil || proof != nil {
+		t.Error("Wrong check: Invalid context")
+	}
+	proof, err = servers[0].GenerateMisbehavingProof(context, nil)
+	if err == nil || proof != nil {
+		t.Error("Wrong check: Invalid Z")
+	}
 }
 
 func TestVerifyMisbehavingProof(t *testing.T) {
@@ -622,6 +652,85 @@ func TestVerifyMisbehavingProof(t *testing.T) {
 		t.Error("Cannot verify valid misbehaving proof")
 	}
 
+	//Invalid inputs
+	check = VerifyMisbehavingProof(nil, 0, proof, clientMessage.S[0])
+	if check {
+		t.Error("Wrong check: Invalid context")
+	}
+
+	check = VerifyMisbehavingProof(context, 1, proof, clientMessage.S[0])
+	if check {
+		t.Error("Wrong check: Invalid index")
+	}
+	check = VerifyMisbehavingProof(context, -1, proof, clientMessage.S[0])
+	if check {
+		t.Error("Wrong check: Negative index")
+	}
+
+	check = VerifyMisbehavingProof(context, 0, nil, clientMessage.S[0])
+	if check {
+		t.Error("Wrong check: Missing proof")
+	}
+
+	check = VerifyMisbehavingProof(context, 0, proof, nil)
+	if check {
+		t.Error("Wrong check: Invalid Z")
+	}
+
+	//Modify proof values
+
+	proof, _ = servers[0].GenerateMisbehavingProof(context, clientMessage.S[0])
+	saveProof := ServerProof{
+		c:  proof.c,
+		t1: proof.t1,
+		t2: proof.t2,
+		t3: proof.t3,
+		r1: proof.r1,
+		r2: proof.r2,
+	}
+
+	//Check inputs
+	proof.c = nil
+	check = VerifyMisbehavingProof(context, 0, proof, clientMessage.S[0])
+	if check {
+		t.Error("Error in challenge verification")
+	}
+	proof.c = saveProof.c
+
+	proof.t1 = nil
+	check = VerifyMisbehavingProof(context, 0, proof, clientMessage.S[0])
+	if check {
+		t.Error("Error in t1 verification")
+	}
+	proof.t1 = saveProof.t1
+
+	proof.t2 = nil
+	check = VerifyMisbehavingProof(context, 0, proof, clientMessage.S[0])
+	if check {
+		t.Error("Error in t2 verification")
+	}
+	proof.t2 = saveProof.t2
+
+	proof.t3 = nil
+	check = VerifyMisbehavingProof(context, 0, proof, clientMessage.S[0])
+	if check {
+		t.Error("Error in t3 verification")
+	}
+	proof.t3 = saveProof.t3
+
+	proof.r1 = nil
+	check = VerifyMisbehavingProof(context, 0, proof, clientMessage.S[0])
+	if check {
+		t.Error("Error in r1 verification")
+	}
+	proof.r1 = saveProof.r1
+
+	proof.r2 = suite.Scalar().One()
+	check = VerifyMisbehavingProof(context, 0, proof, clientMessage.S[0])
+	if check {
+		t.Error("Error in r2 verification")
+	}
+	proof.r2 = saveProof.r2
 	// TODO: Complete the tests
 }
 
