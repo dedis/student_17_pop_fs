@@ -157,6 +157,11 @@ func (server *Server) ServerProtocol(context *ContextEd25519, msg *ServerMessage
 		return fmt.Errorf("Invalid message")
 	}
 
+	//Checks that not all servers already did the protocol
+	if len(msg.indexes) >= len(context.G.Y) {
+		return fmt.Errorf("Too many calls of the protocol")
+	}
+
 	// Iteratively checks each signature if this is not the first server to receive the client's request
 	data, e := msg.request.ToBytes()
 	if e != nil {

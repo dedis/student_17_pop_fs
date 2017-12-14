@@ -206,7 +206,7 @@ func TestServerProtocol(t *testing.T) {
 	cs, _ := CheckOpenings(context, &commits, &openings)
 	challenge := Challenge{Sigs: nil, cs: cs}
 
-	//Normal execution
+	//Sign the challenge
 	for _, server := range servers {
 		server.CheckUpdateChallenge(context, cs, &challenge)
 	}
@@ -216,14 +216,104 @@ func TestServerProtocol(t *testing.T) {
 	//Assemble the client message
 	clientMessage := ClientMessage{S: S, T0: T0, context: *context,
 		proof: ClientProof{cs: cs, c: *c, t: *tclient, r: *r}}
+	//Original hash for later test
+	hasher := sha512.New()
+	var writer io.Writer = hasher
+	data, _ := clientMessage.ToBytes()
+	writer.Write(data)
+	hash := hasher.Sum(nil)
 
+	//Create the initial server message
 	servMsg := ServerMessage{request: clientMessage, proofs: nil, tags: nil, sigs: nil, indexes: nil}
 
-	//Normal execution
+	//Normal execution for correct client
 	err := servers[0].ServerProtocol(context, &servMsg)
 	if err != nil {
 		t.Errorf("Error in Server Protocol\n%s", err)
 	}
+
+	err = servers[1].ServerProtocol(context, &servMsg)
+	if err != nil {
+		t.Errorf("Error in Server Protocol for server 1\n%s", err)
+	}
+
+	//Empty request
+	emptyMsg := ServerMessage{request: ClientMessage{}, proofs: servMsg.proofs, tags: servMsg.tags, sigs: servMsg.sigs, indexes: servMsg.indexes}
+	err = servers[0].ServerProtocol(context, &emptyMsg)
+	if err == nil {
+		t.Error("Wrong check: Empty request")
+	}
+
+	//Different lengths
+	wrongMsg := ServerMessage{request: clientMessage, proofs: servMsg.proofs, tags: servMsg.tags, sigs: servMsg.sigs, indexes: servMsg.indexes}
+	wrongMsg.indexes = wrongMsg.indexes[:len(wrongMsg.indexes)-2]
+	err = servers[0].ServerProtocol(context, &wrongMsg)
+	if err == nil {
+		t.Error("Wrong check: different field length of indexes")
+	}
+
+	wrongMsg = ServerMessage{request: clientMessage, proofs: servMsg.proofs, tags: servMsg.tags, sigs: servMsg.sigs, indexes: servMsg.indexes}
+	wrongMsg.tags = wrongMsg.tags[:len(wrongMsg.tags)-2]
+	err = servers[0].ServerProtocol(context, &wrongMsg)
+	if err == nil {
+		t.Error("Wrong check: different field length of tags")
+	}
+
+	wrongMsg = ServerMessage{request: clientMessage, proofs: servMsg.proofs, tags: servMsg.tags, sigs: servMsg.sigs, indexes: servMsg.indexes}
+	wrongMsg.proofs = wrongMsg.proofs[:len(wrongMsg.proofs)-2]
+	err = servers[0].ServerProtocol(context, &wrongMsg)
+	if err == nil {
+		t.Error("Wrong check: different field length of proofs")
+	}
+
+	wrongMsg = ServerMessage{request: clientMessage, proofs: servMsg.proofs, tags: servMsg.tags, sigs: servMsg.sigs, indexes: servMsg.indexes}
+	wrongMsg.sigs = wrongMsg.sigs[:len(wrongMsg.sigs)-2]
+	err = servers[0].ServerProtocol(context, &wrongMsg)
+	if err == nil {
+		t.Error("Wrong check: different field length of signatures")
+	}
+
+	//Modify the client proof
+	wrongClient := ServerMessage{request: clientMessage, proofs: servMsg.proofs, tags: servMsg.tags, sigs: servMsg.sigs, indexes: servMsg.indexes}
+	wrongClient.request.proof = ClientProof{}
+	err = servers[0].ServerProtocol(context, &wrongMsg)
+	if err == nil {
+		t.Error("Wrong check: invalid client proof")
+	}
+
+	//Too many calls
+	err = servers[0].ServerProtocol(context, &servMsg)
+	if err == nil {
+		t.Errorf("Wrong check: Too many calls")
+	}
+
+	//The client request is left untouched
+	hasher2 := sha512.New()
+	var writer2 io.Writer = hasher2
+	data2, _ := servMsg.request.ToBytes()
+	writer2.Write(data2)
+	hash2 := hasher2.Sum(nil)
+
+	for i := range hash {
+		if hash[i] != hash2[i] {
+			t.Error("Client's request modified")
+			break
+		}
+	}
+
+	//Normal execution for misbehaving client
+	misbehavingMsg := ServerMessage{request: clientMessage, proofs: nil, tags: nil, sigs: nil, indexes: nil}
+	misbehavingMsg.request.S[2] = suite.Point().Null() //change the commitment for server 0
+	err = servers[0].ServerProtocol(context, &misbehavingMsg)
+	if err != nil {
+		t.Errorf("Error in Server Protocol for misbehaving client\n%s", err)
+	}
+
+	err = servers[1].ServerProtocol(context, &misbehavingMsg)
+	if err != nil {
+		t.Errorf("Error in Server Protocol for misbehaving client and server 1\n%s", err)
+	}
+
 }
 
 func TestGenerateServerProof(t *testing.T) {
@@ -243,7 +333,7 @@ func TestGenerateServerProof(t *testing.T) {
 	cs, _ := CheckOpenings(context, &commits, &openings)
 	challenge := Challenge{Sigs: nil, cs: cs}
 
-	//Normal execution
+	//Sign the challenge
 	for _, server := range servers {
 		server.CheckUpdateChallenge(context, cs, &challenge)
 	}
@@ -254,6 +344,7 @@ func TestGenerateServerProof(t *testing.T) {
 	clientMessage := ClientMessage{S: S, T0: T0, context: *context,
 		proof: ClientProof{cs: cs, c: *c, t: *tclient, r: *r}}
 
+	//Create the initial server message
 	servMsg := ServerMessage{request: clientMessage, proofs: nil, tags: nil, sigs: nil, indexes: nil}
 
 	//Prepare the proof
@@ -324,7 +415,7 @@ func TestVerifyServerProof(t *testing.T) {
 	servMsg.proofs = append(servMsg.proofs, *proof)
 	servMsg.tags = append(servMsg.tags, T)
 	servMsg.indexes = append(servMsg.indexes, servers[0].index)
-	//Sign the message
+
 	//Signs our message
 	data, _ := servMsg.request.ToBytes()
 	temp, _ := T.MarshalBinary()
