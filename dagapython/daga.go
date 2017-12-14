@@ -28,6 +28,14 @@ var suite = ed25519.NewAES128SHA256Ed25519(false)
 
 /*ECDSASign gnerates a Schnorr signature*/
 func ECDSASign(priv abstract.Scalar, msg []byte) (s []byte, err error) {
+	//Input checks
+	if priv == nil {
+		return nil, fmt.Errorf("Empty private key")
+	}
+	if msg == nil || len(msg) == 0 {
+		return nil, fmt.Errorf("Empty message")
+	}
+
 	s, err = sign.Schnorr(suite, priv, msg)
 	if err != nil {
 		return nil, fmt.Errorf("Error in the signature generation")
@@ -37,6 +45,17 @@ func ECDSASign(priv abstract.Scalar, msg []byte) (s []byte, err error) {
 
 /*ECDSAVerify checks if a Schnorr signature is valid*/
 func ECDSAVerify(public abstract.Point, msg, sig []byte) (err error) {
+	//Input checks
+	if public == nil {
+		return fmt.Errorf("Empty public key")
+	}
+	if msg == nil || len(msg) == 0 {
+		return fmt.Errorf("Empty message")
+	}
+	if sig == nil || len(sig) == 0 {
+		return fmt.Errorf("Empty signature")
+	}
+
 	err = sign.VerifySchnorr(suite, public, msg, sig)
 	return err
 }

@@ -10,9 +10,23 @@ import (
 
 func TestECDSASign(t *testing.T) {
 	priv := suite.Scalar().Pick(random.Stream)
+
+	//Normal execution
 	sig, err := ECDSASign(priv, []byte("Test String"))
 	if err != nil || sig == nil {
 		t.Error("Cannot execute signature")
+	}
+
+	//Empty public key
+	sig, err = ECDSASign(nil, []byte("Test String"))
+	if err == nil || sig != nil {
+		t.Error("Empty public key is accepted")
+	}
+
+	//Empty message
+	sig, err = ECDSASign(priv, nil)
+	if err == nil || sig != nil {
+		t.Error("Empty message is accepted")
 	}
 }
 
@@ -22,6 +36,7 @@ func TestECDSAVerify(t *testing.T) {
 	msg := []byte("Test String")
 	sig, _ := ECDSASign(priv, msg)
 
+	//Normal signature
 	check := ECDSAVerify(suite.Point().Mul(nil, priv), msg, sig)
 	if check != nil {
 		t.Error("Cannot verify signatures")
@@ -39,9 +54,39 @@ func TestECDSAVerify(t *testing.T) {
 	//Signature modification
 	newsig := append([]byte("A"), sig...)
 	newsig = newsig[:len(sig)]
-	check = ECDSAVerify(suite.Point().Mul(nil, priv), fake, sig)
+	check = ECDSAVerify(suite.Point().Mul(nil, priv), msg, newsig)
 	if check == nil {
 		t.Error("Wrong check: signature changed")
+	}
+
+	//Empty public key
+	check = ECDSAVerify(nil, msg, sig)
+	if check == nil {
+		t.Error("Wrong check: empty public key")
+	}
+
+	//Empty message
+	check = ECDSAVerify(suite.Point().Mul(nil, priv), nil, sig)
+	if check == nil {
+		t.Error("Wrong check: empty message")
+	}
+
+	//0 length message
+	check = ECDSAVerify(suite.Point().Mul(nil, priv), []byte{}, sig)
+	if check == nil {
+		t.Error("Wrong check: 0 length message")
+	}
+
+	//Empty signature
+	check = ECDSAVerify(suite.Point().Mul(nil, priv), msg, nil)
+	if check == nil {
+		t.Error("Wrong check: empty signature")
+	}
+
+	//0 length signature
+	check = ECDSAVerify(suite.Point().Mul(nil, priv), msg, []byte{})
+	if check == nil {
+		t.Error("Wrong check: 0 length signature")
 	}
 }
 
