@@ -1,33 +1,48 @@
 package main
 
 import (
-	"crypto/sha512"
+	"dagapython"
 	"fmt"
-	"io"
+	"os"
 
-	"gopkg.in/dedis/crypto.v0/ed25519"
+	"gopkg.in/dedis/crypto.v0/abstract"
 )
 
 func main() {
-	//param := dagapython.GetParameters()
-	//fmt.Println(param.Q.BitLen())
-	fmt.Println("test")
-	hash := sha512.New()
-	hash.Reset()
-	var writer io.Writer = hash
-	var C = ed25519.Curve{}
-	C.Point().Mul(nil, C.Scalar().One()).MarshalTo(writer)
-	h1 := hash.Sum(nil)
-	hash.Reset()
-	data, _ := C.Point().Mul(nil, C.Scalar().One()).MarshalBinary()
-	h2 := hash.Sum(data)
-	fmt.Println("h1")
-	fmt.Printf("%x\n", h1)
-	fmt.Println("Point")
-	fmt.Printf("%x\n", data)
-	fmt.Println("h2")
-	fmt.Printf("%x\n", h2)
-	hash.Reset()
-	fmt.Println("emmpty hash")
-	fmt.Printf("%x\n", hash.Sum(nil))
+	os.Exit(mainExitCode())
+}
+
+func mainExitCode() int {
+	//Number of clients
+	c := 20
+	//Number of servers
+	s := 10
+
+	//Generates clients
+	var X []abstract.Point
+	var clients []dagapython.Client
+	for i := 0; i < c; i++ {
+		client, err := dagapython.CreateClient(i, nil)
+		if err != nil {
+			fmt.Printf("Cannot create clients:\n%s\n", err)
+			return 1
+		}
+		clients = append(clients, client)
+		X = append(X, client.GetPublicKey())
+	}
+
+	//Generates servers
+	var Y []abstract.Point
+	var servers []dagapython.Server
+	for j := 0; j < s; j++ {
+		server, err := dagapython.CreateServer(j, nil)
+		if err != nil {
+			fmt.Printf("Cannot create servers:\n%s\n", err)
+			return 1
+		}
+		servers = append(servers, server)
+		Y = append(Y, server.GetPublicKey())
+	}
+
+	return 0
 }

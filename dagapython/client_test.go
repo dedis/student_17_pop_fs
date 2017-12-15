@@ -9,6 +9,36 @@ import (
 	"gopkg.in/dedis/crypto.v0/random"
 )
 
+func TestCreateClient(t *testing.T) {
+	//Normal execution
+	i := rand.Int()
+	s := suite.Scalar().Pick(random.Stream)
+	client, err := CreateClient(i, s)
+	if err != nil || client.index != i || !client.private.Equal(s) {
+		t.Error("Cannot initialize a new client with a given private key")
+	}
+
+	client, err = CreateClient(i, nil)
+	if err != nil {
+		t.Error("Cannot create a new client without a private key")
+	}
+
+	//Invalid input
+	client, err = CreateClient(-2, s)
+	if err == nil {
+		t.Error("Wrong check: Invalid index")
+	}
+
+}
+
+func TestGetPublicKey_Client(t *testing.T) {
+	client, _ := CreateClient(0, suite.Scalar().Pick(random.Stream))
+	P := client.GetPublicKey()
+	if P == nil {
+		t.Error("Cannot get public key")
+	}
+}
+
 func TestCreateRequest(t *testing.T) {
 	//Normal execution
 	clients, servers, context, _ := generateTestContext(rand.Intn(10)+1, rand.Intn(10)+1)

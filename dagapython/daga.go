@@ -24,6 +24,8 @@ type ContextEd25519 struct {
 	H []abstract.Point
 }
 
+//Suite exports the cryptographic interface to external packages
+var Suite = ed25519.NewAES128SHA256Ed25519(false)
 var suite = ed25519.NewAES128SHA256Ed25519(false)
 
 /*ECDSASign gnerates a Schnorr signature*/

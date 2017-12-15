@@ -55,6 +55,23 @@ type ServerProof struct {
 	r2 abstract.Scalar
 }
 
+//CreateServer is used to initialize a new server with a given index
+//If no private key is given, a random one is chosen
+func CreateServer(i int, s abstract.Scalar) (server Server, err error) {
+	if i < 0 {
+		return Server{}, fmt.Errorf("Invalid parameters")
+	}
+	if s == nil {
+		s = suite.Scalar().Pick(random.Stream)
+	}
+	return Server{index: i, private: s, r: nil}, nil
+}
+
+//GetPublicKey returns the public key associated with a server
+func (server *Server) GetPublicKey() abstract.Point {
+	return suite.Point().Mul(nil, server.private)
+}
+
 /*GenerateCommitment creates the commitment and its opening for the distributed challenge generation*/
 func (server *Server) GenerateCommitment(context *ContextEd25519) (commit *Commitment, opening abstract.Scalar, err error) {
 	opening = suite.Scalar().Pick(random.Stream)

@@ -12,7 +12,7 @@ import (
 /*Client is used to store the client's private key and index.
 All the client's methods are attached to it*/
 type Client struct {
-	Private abstract.Scalar
+	private abstract.Scalar
 	index   int
 }
 
@@ -30,6 +30,23 @@ type ClientProof struct {
 	t  []abstract.Point
 	c  []abstract.Scalar
 	r  []abstract.Scalar
+}
+
+//CreateClient is used to initialize a new client with a given index
+//If no private key is given, a random one is chosen
+func CreateClient(i int, s abstract.Scalar) (client Client, err error) {
+	if i < 0 {
+		return Client{}, fmt.Errorf("Invalid parameters")
+	}
+	if s == nil {
+		s = suite.Scalar().Pick(random.Stream)
+	}
+	return Client{index: i, private: s}, nil
+}
+
+//GetPublicKey returns the public key associated with a client
+func (client *Client) GetPublicKey() abstract.Point {
+	return suite.Point().Mul(nil, client.private)
 }
 
 /*CreateRequest generates the elements for the authentication request (T0, S) and the generation of the client's proof(s)*/
@@ -152,7 +169,7 @@ func (client *Client) GenerateProofResponses(context *ContextEd25519, s abstract
 		rtemp = append(rtemp, temp)
 	}
 	r = &rtemp
-	a := suite.Scalar().Mul((*c)[client.index], client.Private)
+	a := suite.Scalar().Mul((*c)[client.index], client.private)
 	(*r)[2*client.index] = suite.Scalar().Sub((*v)[2*client.index], a)
 
 	b := suite.Scalar().Mul((*c)[client.index], s)

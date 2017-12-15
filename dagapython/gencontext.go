@@ -61,8 +61,8 @@ func generateTestContext(c, s int) (clients []Client, servers []Server, context 
 
 	//Generates c clients with their per-round generators
 	for i := 0; i < c; i++ {
-		new := Client{index: i, Private: suite.Scalar().Pick(random.Stream)}
-		context.G.X = append(context.G.X, suite.Point().Mul(nil, new.Private))
+		new := Client{index: i, private: suite.Scalar().Pick(random.Stream)}
+		context.G.X = append(context.G.X, suite.Point().Mul(nil, new.private))
 		clients = append(clients, new)
 
 		temp, err := GenerateClientGenerator(i, &context.R)

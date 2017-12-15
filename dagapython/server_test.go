@@ -8,7 +8,37 @@ import (
 	"testing"
 
 	"gopkg.in/dedis/crypto.v0/abstract"
+	"gopkg.in/dedis/crypto.v0/random"
 )
+
+func TestCreateServer(t *testing.T) {
+	//Normal execution
+	i := rand.Int()
+	s := suite.Scalar().Pick(random.Stream)
+	server, err := CreateServer(i, s)
+	if err != nil || server.index != i || !server.private.Equal(s) {
+		t.Error("Cannot initialize a new server with a given private key")
+	}
+
+	server, err = CreateServer(i, nil)
+	if err != nil {
+		t.Error("Cannot create a new server without a private key")
+	}
+
+	//Invalid input
+	server, err = CreateServer(-2, s)
+	if err == nil {
+		t.Error("Wrong check: Invalid index")
+	}
+}
+
+func TestGetPublicKey_Server(t *testing.T) {
+	server, _ := CreateServer(0, suite.Scalar().Pick(random.Stream))
+	P := server.GetPublicKey()
+	if P == nil {
+		t.Error("Cannot get public key")
+	}
+}
 
 func TestGenerateCommitment(t *testing.T) {
 	_, servers, context, _ := generateTestContext(rand.Intn(10)+1, rand.Intn(10)+1)
