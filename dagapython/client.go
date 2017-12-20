@@ -4,6 +4,7 @@ import (
 	"crypto/sha512"
 	"fmt"
 	"io"
+	"strconv"
 
 	"gopkg.in/dedis/crypto.v0/abstract"
 	"gopkg.in/dedis/crypto.v0/random"
@@ -221,6 +222,55 @@ func VerifyClientProof(msg ClientMessage) bool {
 	}
 
 	return true
+}
+
+//AssembleMessage is uused to build a Client Message from its various elemnts
+func (client *Client) AssembleMessage(context *ContextEd25519, S *[]abstract.Point, T0 abstract.Point, cs abstract.Scalar, t *[]abstract.Point, c, r *[]abstract.Scalar) (msg *ClientMessage) {
+	proof := ClientProof{cs: cs, t: *t, c: *c, r: *r}
+	return &ClientMessage{context: *context, T0: T0, S: *S, proof: proof}
+}
+
+//GetFinalLinkageTag chekcs the server's signatures and proofs
+//It outputs the final linkage tag of the client
+func (client *Client) GetFinalLinkageTag(context *ContextEd25519, msg *ServerMessage) (Tf abstract.Point, err error) {
+	data, e := msg.request.ToBytes()
+	if e != nil {
+		return nil, fmt.Errorf("Error in request: %s", e)
+	}
+	for i := range msg.proofs {
+		//Signature check
+		temp, err := msg.tags[i].MarshalBinary()
+		if err != nil {
+			return nil, fmt.Errorf("Error in tags: %s", err)
+		}
+		data = append(data, temp...)
+
+		temp, err = msg.proofs[i].ToBytes()
+		if err != nil {
+			return nil, fmt.Errorf("Error in proofs: %s", err)
+		}
+		data = append(data, temp...)
+
+		data = append(data, []byte(strconv.Itoa(msg.indexes[i]))...)
+
+		err = ECDSAVerify(context.G.Y[msg.sigs[i].index], data, msg.sigs[i].sig)
+		if err != nil {
+			return nil, fmt.Errorf("Error in signature: "+strconv.Itoa(i)+"\n%s", err)
+		}
+
+		var valid bool
+		p := msg.proofs[i]
+		if p.r2 == nil {
+			valid = VerifyMisbehavingProof(context, i, &p, msg.request.S[0])
+		} else {
+			valid = VerifyServerProof(context, i, msg)
+		}
+		if !valid {
+			return nil, fmt.Errorf("Invalid server proof")
+		}
+	}
+
+	return msg.tags[len(msg.tags)-1], nil
 }
 
 /*ValidateClientMessage is an utility function to validate that a client message is correclty formed*/

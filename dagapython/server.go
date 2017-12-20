@@ -124,6 +124,11 @@ func CheckOpenings(context *ContextEd25519, commits *[]Commitment, openings *[]a
 	return cs, nil
 }
 
+//InitializeChallenge creates a Challenge structure from a challenge value
+func InitializeChallenge(cs abstract.Scalar) (challenge *Challenge) {
+	return &Challenge{cs: cs, Sigs: nil}
+}
+
 /*CheckUpdateChallenge verifies that all the previous servers computed the same challenges and that their signatures are valid
 It also adds the server's signature to the list if the round-robin is not completed (the challenge has not yet made it back to the leader)*/
 func (server *Server) CheckUpdateChallenge(context *ContextEd25519, cs abstract.Scalar, challenge *Challenge) (err error) {
@@ -161,6 +166,11 @@ func (server *Server) CheckUpdateChallenge(context *ContextEd25519, cs abstract.
 	challenge.Sigs = append(challenge.Sigs, ServerSignature{index: server.index, sig: sig})
 
 	return nil
+}
+
+//InitializeServerMessage creates a ServerMessage from a ClientMessage to ease further processing
+func (server *Server) InitializeServerMessage(request *ClientMessage) (msg *ServerMessage) {
+	return &ServerMessage{request: *request, tags: nil, indexes: nil, proofs: nil, sigs: nil}
 }
 
 /*ServerProtocol runs the server part of DAGA upon receiving a message from either a server or a client*/
@@ -212,6 +222,7 @@ func (server *Server) ServerProtocol(context *ContextEd25519, msg *ServerMessage
 		return fmt.Errorf("Invalid client's proof")
 	}
 
+	//Check all the proofs
 	if len(msg.proofs) != 0 {
 		for i, p := range msg.proofs {
 			var valid bool
@@ -377,6 +388,8 @@ func VerifyServerProof(context *ContextEd25519, i int, msg *ServerMessage) bool 
 		return false
 	}
 
+	index := msg.indexes[i]
+
 	//Step 1
 	var a abstract.Point
 	if i == 0 {
@@ -389,11 +402,11 @@ func VerifyServerProof(context *ContextEd25519, i int, msg *ServerMessage) bool 
 	t1 := suite.Point().Sub(a, b)
 
 	d := suite.Point().Mul(nil, msg.proofs[i].r1)
-	e := suite.Point().Mul(context.R[msg.indexes[i]], msg.proofs[i].c)
+	e := suite.Point().Mul(context.R[index], msg.proofs[i].c)
 	t2 := suite.Point().Add(d, e)
 
-	f := suite.Point().Mul(msg.request.S[i+1], msg.proofs[i].r2)
-	g := suite.Point().Mul(msg.request.S[i+2], msg.proofs[i].c)
+	f := suite.Point().Mul(msg.request.S[index+1], msg.proofs[i].r2)
+	g := suite.Point().Mul(msg.request.S[index+2], msg.proofs[i].c)
 	t3 := suite.Point().Add(f, g)
 
 	//Step 2
@@ -407,10 +420,10 @@ func VerifyServerProof(context *ContextEd25519, i int, msg *ServerMessage) bool 
 	var writer io.Writer = hasher
 	Tprevious.MarshalTo(writer)
 	msg.tags[i].MarshalTo(writer)
-	context.R[i].MarshalTo(writer)
+	context.R[index].MarshalTo(writer)
 	suite.Point().Mul(nil, suite.Scalar().One()).MarshalTo(writer)
-	msg.request.S[i+2].MarshalTo(writer)
-	msg.request.S[i+1].MarshalTo(writer)
+	msg.request.S[index+2].MarshalTo(writer)
+	msg.request.S[index+1].MarshalTo(writer)
 	t1.MarshalTo(writer)
 	t2.MarshalTo(writer)
 	t3.MarshalTo(writer)
