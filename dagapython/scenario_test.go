@@ -118,7 +118,7 @@ func TestScenario(test *testing.T) {
 	}
 
 	//The client assemble the message
-	msg := clients[i].AssembleMessage(&context, &S, T0, cs, t, cclient, r)
+	msg := clients[i].AssembleMessage(&context, &S, T0, challenge, t, cclient, r)
 
 	//Arbitrarily select a server to send the message to
 	j = rand.Intn(len(Y))

@@ -146,6 +146,22 @@ func TestCheckOpenings(t *testing.T) {
 	}
 }
 
+func TestInitializeChallenge(t *testing.T) {
+	cs := suite.Scalar().Pick(random.Stream)
+
+	//Normal execution
+	challenge := InitializeChallenge(cs)
+	if challenge == nil {
+		t.Error("Cannot initialize challenge")
+	}
+
+	//Empty cs
+	challenge = InitializeChallenge(nil)
+	if challenge != nil {
+		t.Error("Wrong check: Empty cs")
+	}
+}
+
 func TestCheckUpdateChallenge(t *testing.T) {
 	//The following tests need at least 2 servers
 	_, servers, context, _ := generateTestContext(rand.Intn(10)+1, rand.Intn(10)+2)
@@ -212,6 +228,53 @@ func TestCheckUpdateChallenge(t *testing.T) {
 	if len(challenge.sigs) != len(servers) {
 		t.Errorf("Invalid number of signatures: %d instead of %d", len(challenge.sigs), len(servers))
 	}
+}
+
+func TestInitializeServerMessage(t *testing.T) {
+	clients, servers, context, _ := generateTestContext(1, 2)
+	for _, server := range servers {
+		if server.r == nil {
+			t.Errorf("Error in r for server %d", server.index)
+		}
+	}
+	T0, S, s, _ := clients[0].CreateRequest(context)
+	tclient, v, w := clients[0].GenerateProofCommitments(context, T0, s)
+
+	//Generate a valid challenge
+	var commits []Commitment
+	var openings []abstract.Scalar
+	for i := 0; i < len(servers); i++ {
+		commit, open, _ := servers[i].GenerateCommitment(context)
+		commits = append(commits, *commit)
+		openings = append(openings, open)
+	}
+
+	cs, _ := CheckOpenings(context, &commits, &openings)
+	challenge := Challenge{sigs: nil, cs: cs}
+
+	//Sign the challenge
+	for _, server := range servers {
+		server.CheckUpdateChallenge(context, cs, &challenge)
+	}
+
+	c, r, _ := clients[0].GenerateProofResponses(context, s, &challenge, v, w)
+
+	//Assemble the client message
+	clientMessage := ClientMessage{sArray: S, t0: T0, context: *context,
+		proof: ClientProof{cs: cs, c: *c, t: *tclient, r: *r}}
+
+	//Normal execution
+	servMsg := servers[0].InitializeServerMessage(&clientMessage)
+	if servMsg == nil || len(servMsg.indexes) != 0 || len(servMsg.proofs) != 0 || len(servMsg.tags) != 0 || len(servMsg.sigs) != 0 {
+		t.Error("Cannot initialize server message")
+	}
+
+	//Empty request
+	servMsg = servers[0].InitializeServerMessage(nil)
+	if servMsg != nil {
+		t.Error("Wrong check: Empty request")
+	}
+
 }
 
 func TestServerProtocol(t *testing.T) {

@@ -126,6 +126,9 @@ func CheckOpenings(context *ContextEd25519, commits *[]Commitment, openings *[]a
 
 //InitializeChallenge creates a Challenge structure from a challenge value
 func InitializeChallenge(cs abstract.Scalar) (challenge *Challenge) {
+	if cs == nil {
+		return nil
+	}
 	return &Challenge{cs: cs, sigs: nil}
 }
 
@@ -170,6 +173,9 @@ func (server *Server) CheckUpdateChallenge(context *ContextEd25519, cs abstract.
 
 //InitializeServerMessage creates a ServerMessage from a ClientMessage to ease further processing
 func (server *Server) InitializeServerMessage(request *ClientMessage) (msg *ServerMessage) {
+	if request == nil {
+		return nil
+	}
 	return &ServerMessage{request: *request, tags: nil, indexes: nil, proofs: nil, sigs: nil}
 }
 
@@ -177,7 +183,7 @@ func (server *Server) InitializeServerMessage(request *ClientMessage) (msg *Serv
 func (server *Server) ServerProtocol(context *ContextEd25519, msg *ServerMessage) error {
 	//Step 1
 	//Verify that the message is correctly formed
-	if !ValidateClientMessage(msg.request) {
+	if !ValidateClientMessage(&msg.request) {
 		return fmt.Errorf("Invalid client's request")
 	}
 	if len(msg.indexes) != len(msg.proofs) || len(msg.proofs) != len(msg.tags) || len(msg.tags) != len(msg.sigs) {

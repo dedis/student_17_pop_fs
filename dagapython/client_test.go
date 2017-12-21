@@ -248,6 +248,168 @@ func TestVerifyClientProof(t *testing.T) {
 	}
 }
 
+func TestAssembleMessage(t *testing.T) {
+	clients, servers, context, _ := generateTestContext(rand.Intn(10)+1, rand.Intn(10)+1)
+	T0, S, s, _ := clients[0].CreateRequest(context)
+	tclient, v, w := clients[0].GenerateProofCommitments(context, T0, s)
+
+	//Dumb challenge generation
+	cs := suite.Scalar().Pick(random.Stream)
+	msg, _ := cs.MarshalBinary()
+	var sigs []serverSignature
+	//Make each test server sign the challenge
+	for _, server := range servers {
+		sig, e := ECDSASign(server.private, msg)
+		if e != nil {
+			t.Errorf("Cannot sign the challenge for server %d", server.index)
+		}
+		sigs = append(sigs, serverSignature{index: server.index, sig: sig})
+	}
+	challenge := Challenge{cs: cs, sigs: sigs}
+
+	c, r, _ := clients[0].GenerateProofResponses(context, s, &challenge, v, w)
+
+	//Normal execution
+	clientMsg := clients[0].AssembleMessage(context, &S, T0, &challenge, tclient, c, r)
+	if !ValidateClientMessage(clientMsg) || clientMsg == nil {
+		t.Error("Cannot assemble a client message")
+	}
+
+	//Empty inputs
+	clientMsg = clients[0].AssembleMessage(nil, &S, T0, &challenge, tclient, c, r)
+	if clientMsg != nil {
+		t.Error("Wrong check: Empty context")
+	}
+	clientMsg = clients[0].AssembleMessage(context, nil, T0, &challenge, tclient, c, r)
+	if clientMsg != nil {
+		t.Error("Wrong check: Empty S")
+	}
+	clientMsg = clients[0].AssembleMessage(context, &[]abstract.Point{}, T0, &challenge, tclient, c, r)
+	if clientMsg != nil {
+		t.Error("Wrong check: len(S) = 0")
+	}
+	clientMsg = clients[0].AssembleMessage(context, &S, nil, &challenge, tclient, c, r)
+	if clientMsg != nil {
+		t.Error("Wrong check: Empty T0")
+	}
+	clientMsg = clients[0].AssembleMessage(context, &S, T0, nil, tclient, c, r)
+	if clientMsg != nil {
+		t.Error("Wrong check: Empty challenge")
+	}
+	clientMsg = clients[0].AssembleMessage(context, &S, T0, &challenge, nil, c, r)
+	if clientMsg != nil {
+		t.Error("Wrong check: Empty t")
+	}
+	clientMsg = clients[0].AssembleMessage(context, &S, T0, &challenge, &[]abstract.Point{}, c, r)
+	if clientMsg != nil {
+		t.Error("Wrong check: len(t) = 0 ")
+	}
+	clientMsg = clients[0].AssembleMessage(context, &S, T0, &challenge, tclient, nil, r)
+	if clientMsg != nil {
+		t.Error("Wrong check: Empty c")
+	}
+	clientMsg = clients[0].AssembleMessage(context, &S, T0, &challenge, tclient, &[]abstract.Scalar{}, r)
+	if clientMsg != nil {
+		t.Error("Wrong check: Empty ")
+	}
+	clientMsg = clients[0].AssembleMessage(context, &S, T0, &challenge, tclient, c, nil)
+	if clientMsg != nil {
+		t.Error("Wrong check: Empty r")
+	}
+	clientMsg = clients[0].AssembleMessage(context, &S, T0, &challenge, tclient, c, &[]abstract.Scalar{})
+	if clientMsg != nil {
+		t.Error("Wrong check: Empty ")
+	}
+
+}
+
+func TestGetFinalLinkageTag(t *testing.T) {
+	clients, servers, context, _ := generateTestContext(1, 2)
+	for _, server := range servers {
+		if server.r == nil {
+			t.Errorf("Error in r for server %d", server.index)
+		}
+	}
+	T0, S, s, _ := clients[0].CreateRequest(context)
+	tclient, v, w := clients[0].GenerateProofCommitments(context, T0, s)
+
+	//Dumb challenge generation
+	cs := suite.Scalar().Pick(random.Stream)
+	msg, _ := cs.MarshalBinary()
+	var sigs []serverSignature
+	//Make each test server sign the challenge
+	for _, server := range servers {
+		sig, e := ECDSASign(server.private, msg)
+		if e != nil {
+			t.Errorf("Cannot sign the challenge for server %d", server.index)
+		}
+		sigs = append(sigs, serverSignature{index: server.index, sig: sig})
+	}
+	challenge := Challenge{cs: cs, sigs: sigs}
+
+	c, r, _ := clients[0].GenerateProofResponses(context, s, &challenge, v, w)
+
+	//Assemble the client message
+	clientMessage := ClientMessage{sArray: S, t0: T0, context: *context,
+		proof: ClientProof{cs: cs, c: *c, t: *tclient, r: *r}}
+
+	//Create the initial server message
+	servMsg := ServerMessage{request: clientMessage, proofs: nil, tags: nil, sigs: nil, indexes: nil}
+
+	//Run ServerProtocol on each server
+	for i := range servers {
+		servers[i].ServerProtocol(context, &servMsg)
+	}
+
+	//Normal execution for a normal client
+	Tf, err := clients[0].GetFinalLinkageTag(context, &servMsg)
+	if err != nil || Tf == nil {
+		t.Errorf("Cannot extract final linkage tag:\n%s", err)
+	}
+
+	//Empty inputs
+	Tf, err = clients[0].GetFinalLinkageTag(nil, &servMsg)
+	if err == nil || Tf != nil {
+		t.Errorf("Wrong check: Empty context")
+	}
+	Tf, err = clients[0].GetFinalLinkageTag(context, nil)
+	if err == nil || Tf != nil {
+		t.Errorf("Wrong check: Empty message")
+	}
+
+	//Change a signature
+	servMsg.sigs[0].sig = append(servMsg.sigs[0].sig[1:], servMsg.sigs[0].sig[0])
+	Tf, err = clients[0].GetFinalLinkageTag(context, &servMsg)
+	if err == nil || Tf != nil {
+		t.Errorf("Invalid signature accepted")
+	}
+	//Revert the change
+	servMsg.sigs[0].sig = append([]byte{0x0}, servMsg.sigs[0].sig...)
+	servMsg.sigs[0].sig[0] = servMsg.sigs[0].sig[len(servMsg.sigs[0].sig)-1]
+	servMsg.sigs[0].sig = servMsg.sigs[0].sig[:len(servMsg.sigs[0].sig)-2]
+
+	//Normal execution for a misbehaving client
+	//Assemble the client message
+	S[2] = suite.Point().Null()
+	clientMessage = ClientMessage{sArray: S, t0: T0, context: *context,
+		proof: ClientProof{cs: cs, c: *c, t: *tclient, r: *r}}
+
+	//Create the initial server message
+	servMsg = ServerMessage{request: clientMessage, proofs: nil, tags: nil, sigs: nil, indexes: nil}
+
+	//Run ServerProtocol on each server
+	for i := range servers {
+		servers[i].ServerProtocol(context, &servMsg)
+	}
+	Tf, err = clients[0].GetFinalLinkageTag(context, &servMsg)
+	if err != nil {
+		t.Errorf("Cannot extract final linkage tag for a misbehaving client")
+	}
+	if !Tf.Equal(suite.Point().Null()) {
+		t.Error("Tf not Null for a misbehaving client")
+	}
+}
+
 func TestValidateClientMessage(t *testing.T) {
 	clients, servers, context, _ := generateTestContext(rand.Intn(10)+1, rand.Intn(10)+1)
 	T0, S, s, _ := clients[0].CreateRequest(context)

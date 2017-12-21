@@ -181,7 +181,7 @@ func (client *Client) GenerateProofResponses(context *ContextEd25519, s abstract
 
 /*verifyClientProof checks the validity of a client's proof*/
 func verifyClientProof(msg ClientMessage) bool {
-	check := ValidateClientMessage(msg)
+	check := ValidateClientMessage(&msg)
 	if !check {
 		return false
 	}
@@ -224,15 +224,28 @@ func verifyClientProof(msg ClientMessage) bool {
 	return true
 }
 
-//AssembleMessage is uused to build a Client Message from its various elemnts
-func (client *Client) AssembleMessage(context *ContextEd25519, S *[]abstract.Point, T0 abstract.Point, cs abstract.Scalar, t *[]abstract.Point, c, r *[]abstract.Scalar) (msg *ClientMessage) {
-	proof := ClientProof{cs: cs, t: *t, c: *c, r: *r}
+//AssembleMessage is used to build a Client Message from its various elemnts
+func (client *Client) AssembleMessage(context *ContextEd25519, S *[]abstract.Point, T0 abstract.Point, challenge *Challenge, t *[]abstract.Point, c, r *[]abstract.Scalar) (msg *ClientMessage) {
+	//Input checks
+	if context == nil || S == nil || T0 == nil || challenge == nil || t == nil || c == nil || r == nil {
+		return nil
+	}
+	if len(*S) == 0 || len(*t) == 0 || len(*c) == 0 || len(*r) == 0 {
+		return nil
+	}
+
+	proof := ClientProof{cs: challenge.cs, t: *t, c: *c, r: *r}
 	return &ClientMessage{context: *context, t0: T0, sArray: *S, proof: proof}
 }
 
-//GetFinalLinkageTag chekcs the server's signatures and proofs
+//GetFinalLinkageTag checks the server's signatures and proofs
 //It outputs the final linkage tag of the client
 func (client *Client) GetFinalLinkageTag(context *ContextEd25519, msg *ServerMessage) (Tf abstract.Point, err error) {
+	//Input checks
+	if context == nil || msg == nil {
+		return nil, fmt.Errorf("Invalid inputs")
+	}
+
 	data, e := msg.request.ToBytes()
 	if e != nil {
 		return nil, fmt.Errorf("Error in request: %s", e)
@@ -274,7 +287,7 @@ func (client *Client) GetFinalLinkageTag(context *ContextEd25519, msg *ServerMes
 }
 
 /*ValidateClientMessage is an utility function to validate that a client message is correclty formed*/
-func ValidateClientMessage(msg ClientMessage) bool {
+func ValidateClientMessage(msg *ClientMessage) bool {
 	//Number of clients
 	i := len(msg.context.G.X)
 	//Number of servers
