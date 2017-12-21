@@ -20,8 +20,8 @@ type Client struct {
 /*ClientMessage stores an authentication request message sent by the client to an arbitrarily chosen server*/
 type ClientMessage struct {
 	context ContextEd25519
-	S       []abstract.Point
-	T0      abstract.Point
+	sArray  []abstract.Point
+	t0      abstract.Point
 	proof   ClientProof
 }
 
@@ -145,7 +145,7 @@ func (client *Client) GenerateProofResponses(context *ContextEd25519, s abstract
 	if e != nil {
 		return nil, nil, fmt.Errorf("Error in challenge conversion: %s", e)
 	}
-	for _, sig := range challenge.Sigs {
+	for _, sig := range challenge.sigs {
 		e = ECDSAVerify(context.G.Y[sig.index], msg, sig.sig)
 		if e != nil {
 			return nil, nil, fmt.Errorf("%s", e)
@@ -179,8 +179,8 @@ func (client *Client) GenerateProofResponses(context *ContextEd25519, s abstract
 	return c, r, nil
 }
 
-/*VerifyClientProof checks the validity of a client's proof*/
-func VerifyClientProof(msg ClientMessage) bool {
+/*verifyClientProof checks the validity of a client's proof*/
+func verifyClientProof(msg ClientMessage) bool {
 	check := ValidateClientMessage(msg)
 	if !check {
 		return false
@@ -197,14 +197,14 @@ func VerifyClientProof(msg ClientMessage) bool {
 			return false
 		}
 
-		c := suite.Point().Mul(msg.S[len(msg.S)-1], msg.proof.c[i])
+		c := suite.Point().Mul(msg.sArray[len(msg.sArray)-1], msg.proof.c[i])
 		d := suite.Point().Mul(nil, msg.proof.r[2*i+1])
 		ti10 := suite.Point().Add(c, d)
 		if !ti10.Equal(msg.proof.t[3*i+1]) {
 			return false
 		}
 
-		e := suite.Point().Mul(msg.T0, msg.proof.c[i])
+		e := suite.Point().Mul(msg.t0, msg.proof.c[i])
 		f := suite.Point().Mul(msg.context.H[i], msg.proof.r[2*i+1])
 		ti11 := suite.Point().Add(e, f)
 		if !ti11.Equal(msg.proof.t[3*i+2]) {
@@ -227,7 +227,7 @@ func VerifyClientProof(msg ClientMessage) bool {
 //AssembleMessage is uused to build a Client Message from its various elemnts
 func (client *Client) AssembleMessage(context *ContextEd25519, S *[]abstract.Point, T0 abstract.Point, cs abstract.Scalar, t *[]abstract.Point, c, r *[]abstract.Scalar) (msg *ClientMessage) {
 	proof := ClientProof{cs: cs, t: *t, c: *c, r: *r}
-	return &ClientMessage{context: *context, T0: T0, S: *S, proof: proof}
+	return &ClientMessage{context: *context, t0: T0, sArray: *S, proof: proof}
 }
 
 //GetFinalLinkageTag chekcs the server's signatures and proofs
@@ -261,9 +261,9 @@ func (client *Client) GetFinalLinkageTag(context *ContextEd25519, msg *ServerMes
 		var valid bool
 		p := msg.proofs[i]
 		if p.r2 == nil {
-			valid = VerifyMisbehavingProof(context, i, &p, msg.request.S[0])
+			valid = verifyMisbehavingProof(context, i, &p, msg.request.sArray[0])
 		} else {
-			valid = VerifyServerProof(context, i, msg)
+			valid = verifyServerProof(context, i, msg)
 		}
 		if !valid {
 			return nil, fmt.Errorf("Invalid server proof")
@@ -280,14 +280,14 @@ func ValidateClientMessage(msg ClientMessage) bool {
 	//Number of servers
 	j := len(msg.context.G.Y)
 	//A commitment for each server exists and the second element is the generator S=(Z,g,S1,..,Sj)
-	if len(msg.S) != j+2 {
+	if len(msg.sArray) != j+2 {
 		return false
 	}
-	if !msg.S[1].Equal(suite.Point().Mul(nil, suite.Scalar().One())) {
+	if !msg.sArray[1].Equal(suite.Point().Mul(nil, suite.Scalar().One())) {
 		return false
 	}
 	//T0 not empty
-	if msg.T0 == nil {
+	if msg.t0 == nil {
 		return false
 	}
 	//Proof fields have the correct size
@@ -304,13 +304,13 @@ func (msg *ClientMessage) ToBytes() (data []byte, err error) {
 		return nil, fmt.Errorf("Error in context: %s", e)
 	}
 
-	temp, e := PointArrayToBytes(&msg.S)
+	temp, e := PointArrayToBytes(&msg.sArray)
 	if e != nil {
 		return nil, fmt.Errorf("Error in S: %s", e)
 	}
 	data = append(data, temp...)
 
-	temp, e = msg.T0.MarshalBinary()
+	temp, e = msg.t0.MarshalBinary()
 	if e != nil {
 		return nil, fmt.Errorf("Error in T0: %s", e)
 	}

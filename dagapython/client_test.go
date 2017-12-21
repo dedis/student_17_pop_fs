@@ -108,16 +108,16 @@ func TestGenerateProofResponses(t *testing.T) {
 	//Dumb challenge generation
 	cs := suite.Scalar().Pick(random.Stream)
 	msg, _ := cs.MarshalBinary()
-	var sigs []ServerSignature
+	var sigs []serverSignature
 	//Make each test server sign the challenge
 	for _, server := range servers {
 		sig, e := ECDSASign(server.private, msg)
 		if e != nil {
 			t.Errorf("Cannot sign the challenge for server %d", server.index)
 		}
-		sigs = append(sigs, ServerSignature{index: server.index, sig: sig})
+		sigs = append(sigs, serverSignature{index: server.index, sig: sig})
 	}
-	challenge := Challenge{cs: cs, Sigs: sigs}
+	challenge := Challenge{cs: cs, sigs: sigs}
 
 	//Normal execution
 	c, r, err := clients[0].GenerateProofResponses(context, s, &challenge, v, w)
@@ -151,7 +151,7 @@ func TestGenerateProofResponses(t *testing.T) {
 			break
 		}
 	}
-	wrongChallenge := Challenge{cs: fake, Sigs: sigs}
+	wrongChallenge := Challenge{cs: fake, sigs: sigs}
 	c, r, err = clients[0].GenerateProofResponses(context, s, &wrongChallenge, v, w)
 	if err == nil {
 		t.Error("Cannot verify the message")
@@ -167,7 +167,7 @@ func TestGenerateProofResponses(t *testing.T) {
 	newsig := append([]byte("A"), sigs[0].sig...)
 	newsig = newsig[:len(sigs[0].sig)]
 	sigs[0].sig = newsig
-	SigChallenge := Challenge{cs: cs, Sigs: sigs}
+	SigChallenge := Challenge{cs: cs, sigs: sigs}
 	c, r, err = clients[0].GenerateProofResponses(context, s, &SigChallenge, v, w)
 	if err == nil {
 		t.Error("Cannot verify the message")
@@ -188,27 +188,27 @@ func TestVerifyClientProof(t *testing.T) {
 	//Dumb challenge generation
 	cs := suite.Scalar().Pick(random.Stream)
 	msg, _ := cs.MarshalBinary()
-	var sigs []ServerSignature
+	var sigs []serverSignature
 	//Make each test server sign the challenge
 	for _, server := range servers {
 		sig, e := ECDSASign(server.private, msg)
 		if e != nil {
 			t.Errorf("Cannot sign the challenge for server %d", server.index)
 		}
-		sigs = append(sigs, ServerSignature{index: server.index, sig: sig})
+		sigs = append(sigs, serverSignature{index: server.index, sig: sig})
 	}
-	challenge := Challenge{cs: cs, Sigs: sigs}
+	challenge := Challenge{cs: cs, sigs: sigs}
 
 	//Generate the final proof
 	c, r, _ := clients[0].GenerateProofResponses(context, s, &challenge, v, w)
 
 	ClientMsg := ClientMessage{context: ContextEd25519{G: Members{X: context.G.X, Y: context.G.Y}, R: context.R, H: context.H},
-		T0:    T0,
-		S:     S,
-		proof: ClientProof{c: *c, cs: cs, r: *r, t: *tproof}}
+		t0:     T0,
+		sArray: S,
+		proof:  ClientProof{c: *c, cs: cs, r: *r, t: *tproof}}
 
 	//Normal execution
-	check := VerifyClientProof(ClientMsg)
+	check := verifyClientProof(ClientMsg)
 	if !check {
 		t.Error("Cannot verify client proof")
 	}
@@ -218,7 +218,7 @@ func TestVerifyClientProof(t *testing.T) {
 	i := rand.Intn(len(clients))
 	ttemp := ScratchMsg.proof.t[3*i].Clone()
 	ScratchMsg.proof.t[3*i] = suite.Point().Null()
-	check = VerifyClientProof(ScratchMsg)
+	check = verifyClientProof(ScratchMsg)
 	if check {
 		t.Errorf("Incorrect check of t at index %d", 3*i)
 	}
@@ -226,7 +226,7 @@ func TestVerifyClientProof(t *testing.T) {
 
 	ttemp = ScratchMsg.proof.t[3*i+1].Clone()
 	ScratchMsg.proof.t[3*i+1] = suite.Point().Null()
-	check = VerifyClientProof(ScratchMsg)
+	check = verifyClientProof(ScratchMsg)
 	if check {
 		t.Errorf("Incorrect check of t at index %d", 3*i+1)
 	}
@@ -234,7 +234,7 @@ func TestVerifyClientProof(t *testing.T) {
 
 	ttemp = ScratchMsg.proof.t[3*i+2].Clone()
 	ScratchMsg.proof.t[3*i+2] = suite.Point().Null()
-	check = VerifyClientProof(ScratchMsg)
+	check = verifyClientProof(ScratchMsg)
 	if check {
 		t.Errorf("Incorrect check of t at index %d", 3*i+2)
 	}
@@ -242,7 +242,7 @@ func TestVerifyClientProof(t *testing.T) {
 
 	//Modify the value of the challenge
 	ScratchMsg.proof.cs = suite.Scalar().Zero()
-	check = VerifyClientProof(ScratchMsg)
+	check = verifyClientProof(ScratchMsg)
 	if check {
 		t.Errorf("Incorrect check of the challenge")
 	}
@@ -256,27 +256,27 @@ func TestValidateClientMessage(t *testing.T) {
 	//Dumb challenge generation
 	cs := suite.Scalar().Pick(random.Stream)
 	msg, _ := cs.MarshalBinary()
-	var sigs []ServerSignature
+	var sigs []serverSignature
 	//Make each test server sign the challenge
 	for _, server := range servers {
 		sig, e := ECDSASign(server.private, msg)
 		if e != nil {
 			t.Errorf("Cannot sign the challenge for server %d", server.index)
 		}
-		sigs = append(sigs, ServerSignature{index: server.index, sig: sig})
+		sigs = append(sigs, serverSignature{index: server.index, sig: sig})
 	}
-	challenge := Challenge{cs: cs, Sigs: sigs}
+	challenge := Challenge{cs: cs, sigs: sigs}
 
 	//Generate the final proof
 	c, r, _ := clients[0].GenerateProofResponses(context, s, &challenge, v, w)
 
 	ClientMsg := ClientMessage{context: ContextEd25519{G: Members{X: context.G.X, Y: context.G.Y}, R: context.R, H: context.H},
-		T0:    T0,
-		S:     S,
-		proof: ClientProof{c: *c, cs: cs, r: *r, t: *tproof}}
+		t0:     T0,
+		sArray: S,
+		proof:  ClientProof{c: *c, cs: cs, r: *r, t: *tproof}}
 
 	//Normal execution
-	check := VerifyClientProof(ClientMsg)
+	check := verifyClientProof(ClientMsg)
 	if !check {
 		t.Error("Cannot verify client proof")
 	}
@@ -284,64 +284,64 @@ func TestValidateClientMessage(t *testing.T) {
 	//Modifying the length of various elements
 	ScratchMsg := ClientMsg
 	ScratchMsg.proof.c = append(ScratchMsg.proof.c, suite.Scalar().Pick(random.Stream))
-	check = VerifyClientProof(ScratchMsg)
+	check = verifyClientProof(ScratchMsg)
 	if check {
 		t.Errorf("Incorrect length check for c: %d instead of %d", len(ScratchMsg.proof.c), len(clients))
 	}
 	ScratchMsg.proof.c = ScratchMsg.proof.c[:len(clients)-1]
-	check = VerifyClientProof(ScratchMsg)
+	check = verifyClientProof(ScratchMsg)
 	if check {
 		t.Errorf("Incorrect length check for c: %d instead of %d", len(ScratchMsg.proof.c), len(clients))
 	}
 
 	ScratchMsg = ClientMsg
 	ScratchMsg.proof.r = append(ScratchMsg.proof.r, suite.Scalar().Pick(random.Stream))
-	check = VerifyClientProof(ScratchMsg)
+	check = verifyClientProof(ScratchMsg)
 	if check {
 		t.Errorf("Incorrect length check for r: %d instead of %d", len(ScratchMsg.proof.c), len(clients))
 	}
 	ScratchMsg.proof.r = ScratchMsg.proof.r[:2*len(clients)-1]
-	check = VerifyClientProof(ScratchMsg)
+	check = verifyClientProof(ScratchMsg)
 	if check {
 		t.Errorf("Incorrect length check for r: %d instead of %d", len(ScratchMsg.proof.c), len(clients))
 	}
 
 	ScratchMsg = ClientMsg
 	ScratchMsg.proof.t = append(ScratchMsg.proof.t, suite.Point().Mul(nil, suite.Scalar().Pick(random.Stream)))
-	check = VerifyClientProof(ScratchMsg)
+	check = verifyClientProof(ScratchMsg)
 	if check {
 		t.Errorf("Incorrect length check for t: %d instead of %d", len(ScratchMsg.proof.c), len(clients))
 	}
 	ScratchMsg.proof.t = ScratchMsg.proof.t[:3*len(clients)-1]
-	check = VerifyClientProof(ScratchMsg)
+	check = verifyClientProof(ScratchMsg)
 	if check {
 		t.Errorf("Incorrect length check for t: %d instead of %d", len(ScratchMsg.proof.c), len(clients))
 	}
 
 	ScratchMsg = ClientMsg
-	ScratchMsg.S = append(ScratchMsg.S, suite.Point().Mul(nil, suite.Scalar().Pick(random.Stream)))
-	check = VerifyClientProof(ScratchMsg)
+	ScratchMsg.sArray = append(ScratchMsg.sArray, suite.Point().Mul(nil, suite.Scalar().Pick(random.Stream)))
+	check = verifyClientProof(ScratchMsg)
 	if check {
-		t.Errorf("Incorrect length check for S: %d instead of %d", len(ScratchMsg.S), len(servers)+2)
+		t.Errorf("Incorrect length check for S: %d instead of %d", len(ScratchMsg.sArray), len(servers)+2)
 	}
-	ScratchMsg.S = ScratchMsg.S[:len(servers)+1]
-	check = VerifyClientProof(ScratchMsg)
+	ScratchMsg.sArray = ScratchMsg.sArray[:len(servers)+1]
+	check = verifyClientProof(ScratchMsg)
 	if check {
-		t.Errorf("Incorrect length check for S: %d instead of %d", len(ScratchMsg.S), len(servers)+2)
+		t.Errorf("Incorrect length check for S: %d instead of %d", len(ScratchMsg.sArray), len(servers)+2)
 	}
 
 	//Modify the value of the generator in S[1]
 	ScratchMsg = ClientMsg
-	ScratchMsg.S[1] = suite.Point().Mul(nil, suite.Scalar().Pick(random.Stream))
-	check = VerifyClientProof(ScratchMsg)
+	ScratchMsg.sArray[1] = suite.Point().Mul(nil, suite.Scalar().Pick(random.Stream))
+	check = verifyClientProof(ScratchMsg)
 	if check {
 		t.Errorf("Incorrect check for the generator in S[1]")
 	}
-	ScratchMsg.S[1] = suite.Point().Mul(nil, suite.Scalar().One())
+	ScratchMsg.sArray[1] = suite.Point().Mul(nil, suite.Scalar().One())
 
 	//Remove T0
-	ScratchMsg.T0 = nil
-	check = VerifyClientProof(ScratchMsg)
+	ScratchMsg.t0 = nil
+	check = verifyClientProof(ScratchMsg)
 	if check {
 		t.Errorf("Accepts a empty T0")
 	}
@@ -355,24 +355,24 @@ func TestToBytes_ClientMessage(t *testing.T) {
 	//Dumb challenge generation
 	cs := suite.Scalar().Pick(random.Stream)
 	msg, _ := cs.MarshalBinary()
-	var sigs []ServerSignature
+	var sigs []serverSignature
 	//Make each test server sign the challenge
 	for _, server := range servers {
 		sig, e := ECDSASign(server.private, msg)
 		if e != nil {
 			t.Errorf("Cannot sign the challenge for server %d", server.index)
 		}
-		sigs = append(sigs, ServerSignature{index: server.index, sig: sig})
+		sigs = append(sigs, serverSignature{index: server.index, sig: sig})
 	}
-	challenge := Challenge{cs: cs, Sigs: sigs}
+	challenge := Challenge{cs: cs, sigs: sigs}
 
 	//Generate the final proof
 	c, r, _ := clients[0].GenerateProofResponses(context, s, &challenge, v, w)
 
 	ClientMsg := ClientMessage{context: ContextEd25519{G: Members{X: context.G.X, Y: context.G.Y}, R: context.R, H: context.H},
-		T0:    T0,
-		S:     S,
-		proof: ClientProof{c: *c, cs: cs, r: *r, t: *tproof}}
+		t0:     T0,
+		sArray: S,
+		proof:  ClientProof{c: *c, cs: cs, r: *r, t: *tproof}}
 
 	//Normal execution
 	data, err := ClientMsg.ToBytes()
@@ -392,16 +392,16 @@ func TestToBytes_ClientProof(t *testing.T) {
 	//Dumb challenge generation
 	cs := suite.Scalar().Pick(random.Stream)
 	msg, _ := cs.MarshalBinary()
-	var sigs []ServerSignature
+	var sigs []serverSignature
 	//Make each test server sign the challenge
 	for _, server := range servers {
 		sig, e := ECDSASign(server.private, msg)
 		if e != nil {
 			t.Errorf("Cannot sign the challenge for server %d", server.index)
 		}
-		sigs = append(sigs, ServerSignature{index: server.index, sig: sig})
+		sigs = append(sigs, serverSignature{index: server.index, sig: sig})
 	}
-	challenge := Challenge{cs: cs, Sigs: sigs}
+	challenge := Challenge{cs: cs, sigs: sigs}
 
 	//Generate the final proof
 	c, r, _ := clients[0].GenerateProofResponses(context, s, &challenge, v, w)

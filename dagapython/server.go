@@ -21,11 +21,11 @@ type Server struct {
 /*Commitment stores the index of the server, the commitment value and the signature for the commitment*/
 type Commitment struct {
 	commit abstract.Point
-	Sig    ServerSignature
+	sigs   serverSignature
 }
 
-/*ServerSignature stores a signature created by a server and the server's index*/
-type ServerSignature struct {
+/*serverSignature stores a signature created by a server and the server's index*/
+type serverSignature struct {
 	index int
 	sig   []byte
 }
@@ -33,20 +33,20 @@ type ServerSignature struct {
 /*Challenge stores the collectively generated challenge and the signatures of the servers*/
 type Challenge struct {
 	cs   abstract.Scalar
-	Sigs []ServerSignature
+	sigs []serverSignature
 }
 
 /*ServerMessage stores the message sent by a server to one or many others*/
 type ServerMessage struct {
 	request ClientMessage
 	tags    []abstract.Point
-	proofs  []ServerProof
+	proofs  []serverProof
 	indexes []int
-	sigs    []ServerSignature
+	sigs    []serverSignature
 }
 
-/*ServerProof stores a server proof of his computations*/
-type ServerProof struct {
+/*serverProof stores a server proof of his computations*/
+type serverProof struct {
 	t1 abstract.Point
 	t2 abstract.Point
 	t3 abstract.Point
@@ -84,13 +84,13 @@ func (server *Server) GenerateCommitment(context *ContextEd25519) (commit *Commi
 	if err != nil {
 		return nil, nil, fmt.Errorf("Error in commit signature generation: %s", err)
 	}
-	return &Commitment{Sig: ServerSignature{index: server.index, sig: sig}, commit: com}, opening, nil
+	return &Commitment{sigs: serverSignature{index: server.index, sig: sig}, commit: com}, opening, nil
 }
 
 /*VerifyCommitmentSignature verifies that all the commitments are valid and correctly signed*/
 func VerifyCommitmentSignature(context *ContextEd25519, commits *[]Commitment) (err error) {
 	for i, com := range *commits {
-		if i != com.Sig.index {
+		if i != com.sigs.index {
 			return fmt.Errorf("Wrong index")
 		}
 		//TODO: How to check that a point is on the curve?
@@ -100,7 +100,7 @@ func VerifyCommitmentSignature(context *ContextEd25519, commits *[]Commitment) (
 		if e != nil {
 			return fmt.Errorf("Error in conversion of commit for verification: %s", err)
 		}
-		err = ECDSAVerify(context.G.Y[i], msg, com.Sig.sig)
+		err = ECDSAVerify(context.G.Y[i], msg, com.sigs.sig)
 		if err != nil {
 			return err
 		}
@@ -126,7 +126,7 @@ func CheckOpenings(context *ContextEd25519, commits *[]Commitment, openings *[]a
 
 //InitializeChallenge creates a Challenge structure from a challenge value
 func InitializeChallenge(cs abstract.Scalar) (challenge *Challenge) {
-	return &Challenge{cs: cs, Sigs: nil}
+	return &Challenge{cs: cs, sigs: nil}
 }
 
 /*CheckUpdateChallenge verifies that all the previous servers computed the same challenges and that their signatures are valid
@@ -138,7 +138,7 @@ func (server *Server) CheckUpdateChallenge(context *ContextEd25519, cs abstract.
 		return fmt.Errorf("Error in challenge conversion: %s", e)
 	}
 	encountered := map[int]bool{}
-	for _, sig := range challenge.Sigs {
+	for _, sig := range challenge.sigs {
 		if encountered[sig.index] == true {
 			return fmt.Errorf("Duplicate signature")
 		}
@@ -156,14 +156,14 @@ func (server *Server) CheckUpdateChallenge(context *ContextEd25519, cs abstract.
 	}
 
 	//Add the server's signature to the list if it is not the last one
-	if len(challenge.Sigs) == len(context.G.Y) {
+	if len(challenge.sigs) == len(context.G.Y) {
 		return nil
 	}
 	sig, e := ECDSASign(server.private, msg)
 	if e != nil {
 		return e
 	}
-	challenge.Sigs = append(challenge.Sigs, ServerSignature{index: server.index, sig: sig})
+	challenge.sigs = append(challenge.sigs, serverSignature{index: server.index, sig: sig})
 
 	return nil
 }
@@ -218,7 +218,7 @@ func (server *Server) ServerProtocol(context *ContextEd25519, msg *ServerMessage
 	}
 
 	// Check the client proof
-	if !VerifyClientProof(msg.request) {
+	if !verifyClientProof(msg.request) {
 		return fmt.Errorf("Invalid client's proof")
 	}
 
@@ -227,9 +227,9 @@ func (server *Server) ServerProtocol(context *ContextEd25519, msg *ServerMessage
 		for i, p := range msg.proofs {
 			var valid bool
 			if p.r2 == nil {
-				valid = VerifyMisbehavingProof(context, i, &p, msg.request.S[0])
+				valid = verifyMisbehavingProof(context, i, &p, msg.request.sArray[0])
 			} else {
-				valid = VerifyServerProof(context, i, msg)
+				valid = verifyServerProof(context, i, msg)
 			}
 			if !valid {
 				return fmt.Errorf("Invalid server proof")
@@ -240,25 +240,25 @@ func (server *Server) ServerProtocol(context *ContextEd25519, msg *ServerMessage
 	//Step 2: Verify the correct behaviour of the client
 	hasher := sha512.New()
 	var writer io.Writer = hasher
-	suite.Point().Mul(msg.request.S[0], server.private).MarshalTo(writer)
+	suite.Point().Mul(msg.request.sArray[0], server.private).MarshalTo(writer)
 	hash := hasher.Sum(nil)
 	rand := suite.Cipher(hash)
 	s := suite.Scalar().Pick(rand)
 	var T abstract.Point
-	var proof *ServerProof
+	var proof *serverProof
 	//Detect a misbehaving client and generate the elements of the server's message accordingly
-	if !msg.request.S[server.index+2].Equal(suite.Point().Mul(msg.request.S[server.index+1], s)) {
+	if !msg.request.sArray[server.index+2].Equal(suite.Point().Mul(msg.request.sArray[server.index+1], s)) {
 		T = suite.Point().Null()
-		proof, e = server.GenerateMisbehavingProof(context, msg.request.S[0])
+		proof, e = server.generateMisbehavingProof(context, msg.request.sArray[0])
 	} else {
 		inv := suite.Scalar().Inv(s)
 		exp := suite.Scalar().Mul(server.r, inv)
 		if len(msg.tags) == 0 {
-			T = suite.Point().Mul(msg.request.T0, exp)
+			T = suite.Point().Mul(msg.request.t0, exp)
 		} else {
 			T = suite.Point().Mul(msg.tags[len(msg.tags)-1], exp)
 		}
-		proof, e = server.GenerateServerProof(context, s, T, msg)
+		proof, e = server.generateServerProof(context, s, T, msg)
 	}
 	if e != nil {
 		return e
@@ -284,7 +284,7 @@ func (server *Server) ServerProtocol(context *ContextEd25519, msg *ServerMessage
 		return fmt.Errorf("Error in own signature: %s", e)
 	}
 
-	signature := ServerSignature{sig: sign, index: server.index}
+	signature := serverSignature{sig: sign, index: server.index}
 
 	//Step 4: Form the new message
 	msg.tags = append(msg.tags, T)
@@ -295,8 +295,8 @@ func (server *Server) ServerProtocol(context *ContextEd25519, msg *ServerMessage
 	return nil
 }
 
-/*GenerateServerProof creates the server proof for its computations*/
-func (server *Server) GenerateServerProof(context *ContextEd25519, s abstract.Scalar, T abstract.Point, msg *ServerMessage) (proof *ServerProof, err error) {
+/*generateServerProof creates the server proof for its computations*/
+func (server *Server) generateServerProof(context *ContextEd25519, s abstract.Scalar, T abstract.Point, msg *ServerMessage) (proof *serverProof, err error) {
 	//Input validation
 	if context == nil {
 		return nil, fmt.Errorf("Empty context")
@@ -317,7 +317,7 @@ func (server *Server) GenerateServerProof(context *ContextEd25519, s abstract.Sc
 
 	var a abstract.Point
 	if len(msg.tags) == 0 {
-		a = suite.Point().Mul(msg.request.T0, v1)
+		a = suite.Point().Mul(msg.request.t0, v1)
 	} else {
 		a = suite.Point().Mul(msg.tags[len(msg.tags)-1], v1)
 	}
@@ -328,12 +328,12 @@ func (server *Server) GenerateServerProof(context *ContextEd25519, s abstract.Sc
 
 	t2 := suite.Point().Mul(nil, v1)
 
-	t3 := suite.Point().Mul(msg.request.S[server.index+1], v2) //Accesses S[j-1]
+	t3 := suite.Point().Mul(msg.request.sArray[server.index+1], v2) //Accesses S[j-1]
 
 	//Step 2
 	var Tprevious abstract.Point
 	if len(msg.tags) == 0 {
-		Tprevious = msg.request.T0
+		Tprevious = msg.request.t0
 	} else {
 		Tprevious = msg.tags[len(msg.tags)-1]
 	}
@@ -345,8 +345,8 @@ func (server *Server) GenerateServerProof(context *ContextEd25519, s abstract.Sc
 	T.MarshalTo(writer)
 	context.R[server.index].MarshalTo(writer)
 	suite.Point().Mul(nil, suite.Scalar().One()).MarshalTo(writer)
-	msg.request.S[server.index+2].MarshalTo(writer)
-	msg.request.S[server.index+1].MarshalTo(writer)
+	msg.request.sArray[server.index+2].MarshalTo(writer)
+	msg.request.sArray[server.index+1].MarshalTo(writer)
 	t1.MarshalTo(writer)
 	t2.MarshalTo(writer)
 	t3.MarshalTo(writer)
@@ -362,7 +362,7 @@ func (server *Server) GenerateServerProof(context *ContextEd25519, s abstract.Sc
 	r2 := suite.Scalar().Sub(v2, e)
 
 	//Step 4
-	return &ServerProof{
+	return &serverProof{
 		t1: t1,
 		t2: t2,
 		t3: t3,
@@ -372,8 +372,8 @@ func (server *Server) GenerateServerProof(context *ContextEd25519, s abstract.Sc
 	}, nil
 }
 
-/*VerifyServerProof verifies a server proof*/
-func VerifyServerProof(context *ContextEd25519, i int, msg *ServerMessage) bool {
+/*verifyServerProof verifies a server proof*/
+func verifyServerProof(context *ContextEd25519, i int, msg *ServerMessage) bool {
 	//Input checks
 	if context == nil || msg == nil {
 		return false
@@ -393,7 +393,7 @@ func VerifyServerProof(context *ContextEd25519, i int, msg *ServerMessage) bool 
 	//Step 1
 	var a abstract.Point
 	if i == 0 {
-		a = suite.Point().Mul(msg.request.T0, msg.proofs[i].r1)
+		a = suite.Point().Mul(msg.request.t0, msg.proofs[i].r1)
 	} else {
 		a = suite.Point().Mul(msg.tags[i-1], msg.proofs[i].r1)
 	}
@@ -405,14 +405,14 @@ func VerifyServerProof(context *ContextEd25519, i int, msg *ServerMessage) bool 
 	e := suite.Point().Mul(context.R[index], msg.proofs[i].c)
 	t2 := suite.Point().Add(d, e)
 
-	f := suite.Point().Mul(msg.request.S[index+1], msg.proofs[i].r2)
-	g := suite.Point().Mul(msg.request.S[index+2], msg.proofs[i].c)
+	f := suite.Point().Mul(msg.request.sArray[index+1], msg.proofs[i].r2)
+	g := suite.Point().Mul(msg.request.sArray[index+2], msg.proofs[i].c)
 	t3 := suite.Point().Add(f, g)
 
 	//Step 2
 	var Tprevious abstract.Point
 	if i == 0 {
-		Tprevious = msg.request.T0
+		Tprevious = msg.request.t0
 	} else {
 		Tprevious = msg.tags[i-1]
 	}
@@ -422,8 +422,8 @@ func VerifyServerProof(context *ContextEd25519, i int, msg *ServerMessage) bool 
 	msg.tags[i].MarshalTo(writer)
 	context.R[index].MarshalTo(writer)
 	suite.Point().Mul(nil, suite.Scalar().One()).MarshalTo(writer)
-	msg.request.S[index+2].MarshalTo(writer)
-	msg.request.S[index+1].MarshalTo(writer)
+	msg.request.sArray[index+2].MarshalTo(writer)
+	msg.request.sArray[index+1].MarshalTo(writer)
 	t1.MarshalTo(writer)
 	t2.MarshalTo(writer)
 	t3.MarshalTo(writer)
@@ -439,8 +439,8 @@ func VerifyServerProof(context *ContextEd25519, i int, msg *ServerMessage) bool 
 	return true
 }
 
-/*GenerateMisbehavingProof creates the proof of a misbehaving client*/
-func (server *Server) GenerateMisbehavingProof(context *ContextEd25519, Z abstract.Point) (proof *ServerProof, err error) {
+/*generateMisbehavingProof creates the proof of a misbehaving client*/
+func (server *Server) generateMisbehavingProof(context *ContextEd25519, Z abstract.Point) (proof *serverProof, err error) {
 	//Input checks
 	if context == nil {
 		return nil, fmt.Errorf("Empty context")
@@ -475,7 +475,7 @@ func (server *Server) GenerateMisbehavingProof(context *ContextEd25519, Z abstra
 	r := suite.Scalar().Sub(v, a)
 
 	//Step 4
-	return &ServerProof{
+	return &serverProof{
 		t1: t1,
 		t2: t2,
 		t3: Zs,
@@ -485,8 +485,8 @@ func (server *Server) GenerateMisbehavingProof(context *ContextEd25519, Z abstra
 	}, nil
 }
 
-/*VerifyMisbehavingProof verifies a proof of a misbehaving client*/
-func VerifyMisbehavingProof(context *ContextEd25519, i int, proof *ServerProof, Z abstract.Point) bool {
+/*verifyMisbehavingProof verifies a proof of a misbehaving client*/
+func verifyMisbehavingProof(context *ContextEd25519, i int, proof *serverProof, Z abstract.Point) bool {
 	//Input checks
 	if context == nil || proof == nil || Z == nil {
 		return false
@@ -544,7 +544,7 @@ func (server *Server) GenerateNewRoundSecret() (R abstract.Point) {
 }
 
 /*ToBytes is a helper function used to convert a ServerProof into []byte to be used in signatures*/
-func (proof *ServerProof) ToBytes() (data []byte, err error) {
+func (proof *serverProof) ToBytes() (data []byte, err error) {
 	temp, e := proof.t1.MarshalBinary()
 	if e != nil {
 		return nil, fmt.Errorf("Error in t1: %s", e)

@@ -56,7 +56,7 @@ func TestGenerateCommitment(t *testing.T) {
 	if err != nil {
 		t.Error("Invalid commitment")
 	}
-	err = ECDSAVerify(suite.Point().Mul(nil, servers[0].private), msg, commit.Sig.sig)
+	err = ECDSAVerify(suite.Point().Mul(nil, servers[0].private), msg, commit.sigs.sig)
 	if err != nil {
 		t.Error("Wrong signature")
 	}
@@ -80,19 +80,19 @@ func TestVerifyCommitmentSignature(t *testing.T) {
 
 	//Change a random index
 	i := rand.Intn(len(servers))
-	commits[i].Sig.index = i + 1
+	commits[i].sigs.index = i + 1
 	err = VerifyCommitmentSignature(context, &commits)
 	if err == nil {
 		t.Errorf("Cannot verify matching indexes for %d", i)
 	}
-	commits[i].Sig.index = i + 1
+	commits[i].sigs.index = i + 1
 
 	//Change a signature
 	//Code shown as not covered, but it does detect the modification and returns an error
-	sig := commits[i].Sig.sig
+	sig := commits[i].sigs.sig
 	sig = append([]byte("A"), sig...)
-	sig = sig[:len(commits[i].Sig.sig)]
-	commits[i].Sig.sig = sig
+	sig = sig[:len(commits[i].sigs.sig)]
+	commits[i].sigs.sig = sig
 	err = VerifyCommitmentSignature(context, &commits)
 	if err == nil {
 		t.Errorf("Cannot verify signature for %d", i)
@@ -160,34 +160,34 @@ func TestCheckUpdateChallenge(t *testing.T) {
 	}
 
 	cs, _ := CheckOpenings(context, &commits, &openings)
-	challenge := Challenge{Sigs: nil, cs: cs}
+	challenge := Challenge{sigs: nil, cs: cs}
 
 	//Normal execution
 	err := servers[0].CheckUpdateChallenge(context, cs, &challenge)
 	if err != nil {
 		t.Error("Cannot update the challenge")
 	}
-	if len(challenge.Sigs) != 1 {
+	if len(challenge.sigs) != 1 {
 		t.Error("Did not correctly add the signature")
 	}
 
 	//Duplicate signature
-	challenge.Sigs = append(challenge.Sigs, challenge.Sigs[0])
+	challenge.sigs = append(challenge.sigs, challenge.sigs[0])
 	err = servers[0].CheckUpdateChallenge(context, cs, &challenge)
 	if err == nil {
 		t.Error("Does not check for duplicates signatures")
 	}
-	challenge.Sigs = []ServerSignature{challenge.Sigs[0]}
+	challenge.sigs = []serverSignature{challenge.sigs[0]}
 
 	//Altered signature
-	fake := append([]byte("A"), challenge.Sigs[0].sig...)
-	challenge.Sigs[0].sig = fake[:len(challenge.Sigs[0].sig)]
+	fake := append([]byte("A"), challenge.sigs[0].sig...)
+	challenge.sigs[0].sig = fake[:len(challenge.sigs[0].sig)]
 	err = servers[0].CheckUpdateChallenge(context, cs, &challenge)
 	if err == nil {
 		t.Error("Wrond check of signature")
 	}
 	//Restore correct signature for next tests
-	challenge.Sigs = nil
+	challenge.sigs = nil
 	servers[0].CheckUpdateChallenge(context, cs, &challenge)
 
 	//Modify the challenge
@@ -209,8 +209,8 @@ func TestCheckUpdateChallenge(t *testing.T) {
 	if err != nil {
 		t.Error("Error when closing the loop of the round-robin")
 	}
-	if len(challenge.Sigs) != len(servers) {
-		t.Errorf("Invalid number of signatures: %d instead of %d", len(challenge.Sigs), len(servers))
+	if len(challenge.sigs) != len(servers) {
+		t.Errorf("Invalid number of signatures: %d instead of %d", len(challenge.sigs), len(servers))
 	}
 }
 
@@ -234,7 +234,7 @@ func TestServerProtocol(t *testing.T) {
 	}
 
 	cs, _ := CheckOpenings(context, &commits, &openings)
-	challenge := Challenge{Sigs: nil, cs: cs}
+	challenge := Challenge{sigs: nil, cs: cs}
 
 	//Sign the challenge
 	for _, server := range servers {
@@ -244,7 +244,7 @@ func TestServerProtocol(t *testing.T) {
 	c, r, _ := clients[0].GenerateProofResponses(context, s, &challenge, v, w)
 
 	//Assemble the client message
-	clientMessage := ClientMessage{S: S, T0: T0, context: *context,
+	clientMessage := ClientMessage{sArray: S, t0: T0, context: *context,
 		proof: ClientProof{cs: cs, c: *c, t: *tclient, r: *r}}
 	//Original hash for later test
 	hasher := sha512.New()
@@ -338,7 +338,7 @@ func TestServerProtocol(t *testing.T) {
 
 	//Normal execution for misbehaving client
 	misbehavingMsg := ServerMessage{request: clientMessage, proofs: nil, tags: nil, sigs: nil, indexes: nil}
-	misbehavingMsg.request.S[2] = suite.Point().Null() //change the commitment for server 0
+	misbehavingMsg.request.sArray[2] = suite.Point().Null() //change the commitment for server 0
 	err = servers[0].ServerProtocol(context, &misbehavingMsg)
 	if err != nil {
 		t.Errorf("Error in Server Protocol for misbehaving client\n%s", err)
@@ -366,7 +366,7 @@ func TestGenerateServerProof(t *testing.T) {
 	}
 
 	cs, _ := CheckOpenings(context, &commits, &openings)
-	challenge := Challenge{Sigs: nil, cs: cs}
+	challenge := Challenge{sigs: nil, cs: cs}
 
 	//Sign the challenge
 	for _, server := range servers {
@@ -376,7 +376,7 @@ func TestGenerateServerProof(t *testing.T) {
 	c, r, _ := clients[0].GenerateProofResponses(context, s, &challenge, v, w)
 
 	//Assemble the client message
-	clientMessage := ClientMessage{S: S, T0: T0, context: *context,
+	clientMessage := ClientMessage{sArray: S, t0: T0, context: *context,
 		proof: ClientProof{cs: cs, c: *c, t: *tclient, r: *r}}
 
 	//Create the initial server message
@@ -385,7 +385,7 @@ func TestGenerateServerProof(t *testing.T) {
 	//Prepare the proof
 	hasher := sha512.New()
 	var writer io.Writer = hasher
-	suite.Point().Mul(servMsg.request.S[0], servers[0].private).MarshalTo(writer)
+	suite.Point().Mul(servMsg.request.sArray[0], servers[0].private).MarshalTo(writer)
 	hash := hasher.Sum(nil)
 	rand := suite.Cipher(hash)
 	secret := suite.Scalar().Pick(rand)
@@ -395,7 +395,7 @@ func TestGenerateServerProof(t *testing.T) {
 	T := suite.Point().Mul(T0, exp)
 
 	//Normal execution
-	proof, err := servers[0].GenerateServerProof(context, secret, T, &servMsg)
+	proof, err := servers[0].generateServerProof(context, secret, T, &servMsg)
 	if err != nil || proof == nil {
 		t.Error("Cannot generate normal server proof")
 	}
@@ -412,19 +412,19 @@ func TestGenerateServerProof(t *testing.T) {
 	}
 
 	//Invalid inputs
-	proof, err = servers[0].GenerateServerProof(nil, secret, T, &servMsg)
+	proof, err = servers[0].generateServerProof(nil, secret, T, &servMsg)
 	if err == nil || proof != nil {
 		t.Error("Wrong check: Invalid context")
 	}
-	proof, err = servers[0].GenerateServerProof(context, nil, T, &servMsg)
+	proof, err = servers[0].generateServerProof(context, nil, T, &servMsg)
 	if err == nil || proof != nil {
 		t.Error("Wrong check: Invalid secret")
 	}
-	proof, err = servers[0].GenerateServerProof(context, secret, nil, &servMsg)
+	proof, err = servers[0].generateServerProof(context, secret, nil, &servMsg)
 	if err == nil || proof != nil {
 		t.Error("Wrong check: Invalid tag")
 	}
-	proof, err = servers[0].GenerateServerProof(context, secret, T, nil)
+	proof, err = servers[0].generateServerProof(context, secret, T, nil)
 	if err == nil || proof != nil {
 		t.Error("Wrong check: Invalid Server Message")
 	}
@@ -445,7 +445,7 @@ func TestVerifyServerProof(t *testing.T) {
 	}
 
 	cs, _ := CheckOpenings(context, &commits, &openings)
-	challenge := Challenge{Sigs: nil, cs: cs}
+	challenge := Challenge{sigs: nil, cs: cs}
 
 	//Normal execution
 	for _, server := range servers {
@@ -455,7 +455,7 @@ func TestVerifyServerProof(t *testing.T) {
 	c, r, _ := clients[0].GenerateProofResponses(context, s, &challenge, v, w)
 
 	//Assemble the client message
-	clientMessage := ClientMessage{S: S, T0: T0, context: *context,
+	clientMessage := ClientMessage{sArray: S, t0: T0, context: *context,
 		proof: ClientProof{cs: cs, c: *c, t: *tclient, r: *r}}
 
 	servMsg := ServerMessage{request: clientMessage, proofs: nil, tags: nil, sigs: nil, indexes: nil}
@@ -463,7 +463,7 @@ func TestVerifyServerProof(t *testing.T) {
 	//Prepare the proof
 	hasher := sha512.New()
 	var writer io.Writer = hasher
-	suite.Point().Mul(servMsg.request.S[0], servers[0].private).MarshalTo(writer)
+	suite.Point().Mul(servMsg.request.sArray[0], servers[0].private).MarshalTo(writer)
 	hash := hasher.Sum(nil)
 	rand := suite.Cipher(hash)
 	secret := suite.Scalar().Pick(rand)
@@ -473,7 +473,7 @@ func TestVerifyServerProof(t *testing.T) {
 	T := suite.Point().Mul(T0, exp)
 
 	//Generate the proof
-	proof, _ := servers[0].GenerateServerProof(context, secret, T, &servMsg)
+	proof, _ := servers[0].generateServerProof(context, secret, T, &servMsg)
 	servMsg.proofs = append(servMsg.proofs, *proof)
 	servMsg.tags = append(servMsg.tags, T)
 	servMsg.indexes = append(servMsg.indexes, servers[0].index)
@@ -486,7 +486,7 @@ func TestVerifyServerProof(t *testing.T) {
 	data = append(data, temp...)
 	data = append(data, []byte(strconv.Itoa(servers[0].index))...)
 	sign, _ := ECDSASign(servers[0].private, data)
-	signature := ServerSignature{sig: sign, index: servers[0].index}
+	signature := serverSignature{sig: sign, index: servers[0].index}
 	servMsg.sigs = append(servMsg.sigs, signature)
 
 	/*err := servers[1].ServerProtocol(context, &servMsg)
@@ -495,7 +495,7 @@ func TestVerifyServerProof(t *testing.T) {
 	}*/
 
 	//Verify first server proof
-	check := VerifyServerProof(context, 0, &servMsg)
+	check := verifyServerProof(context, 0, &servMsg)
 	if !check {
 		t.Error("Cannot verify first valid normal server proof")
 	}
@@ -503,12 +503,12 @@ func TestVerifyServerProof(t *testing.T) {
 	servers[1].ServerProtocol(context, &servMsg)
 
 	//Verify any server proof
-	check = VerifyServerProof(context, 1, &servMsg)
+	check = verifyServerProof(context, 1, &servMsg)
 	if !check {
 		t.Error("Cannot verify valid normal server proof")
 	}
 
-	saveProof := ServerProof{c: servMsg.proofs[1].c,
+	saveProof := serverProof{c: servMsg.proofs[1].c,
 		t1: servMsg.proofs[1].t1,
 		t2: servMsg.proofs[1].t2,
 		t3: servMsg.proofs[1].t3,
@@ -518,65 +518,65 @@ func TestVerifyServerProof(t *testing.T) {
 
 	//Check inputs
 	servMsg.proofs[1].c = nil
-	check = VerifyServerProof(context, 1, &servMsg)
+	check = verifyServerProof(context, 1, &servMsg)
 	if check {
 		t.Error("Error in challenge verification")
 	}
 	servMsg.proofs[1].c = saveProof.c
 
 	servMsg.proofs[1].t1 = nil
-	check = VerifyServerProof(context, 1, &servMsg)
+	check = verifyServerProof(context, 1, &servMsg)
 	if check {
 		t.Error("Error in t1 verification")
 	}
 	servMsg.proofs[1].t1 = saveProof.t1
 
 	servMsg.proofs[1].t2 = nil
-	check = VerifyServerProof(context, 1, &servMsg)
+	check = verifyServerProof(context, 1, &servMsg)
 	if check {
 		t.Error("Error in t2 verification")
 	}
 	servMsg.proofs[1].t2 = saveProof.t2
 
 	servMsg.proofs[1].t3 = nil
-	check = VerifyServerProof(context, 1, &servMsg)
+	check = verifyServerProof(context, 1, &servMsg)
 	if check {
 		t.Error("Error in t3 verification")
 	}
 	servMsg.proofs[1].t3 = saveProof.t3
 
 	servMsg.proofs[1].r1 = nil
-	check = VerifyServerProof(context, 1, &servMsg)
+	check = verifyServerProof(context, 1, &servMsg)
 	if check {
 		t.Error("Error in r1 verification")
 	}
 	servMsg.proofs[1].r1 = saveProof.r1
 
 	servMsg.proofs[1].r2 = nil
-	check = VerifyServerProof(context, 1, &servMsg)
+	check = verifyServerProof(context, 1, &servMsg)
 	if check {
 		t.Error("Error in r2 verification")
 	}
 	servMsg.proofs[1].r2 = saveProof.r2
 
 	//Invalid context
-	check = VerifyServerProof(nil, 1, &servMsg)
+	check = verifyServerProof(nil, 1, &servMsg)
 	if check {
 		t.Error("Wrong check: Invalid context")
 	}
 
 	//nil message
-	check = VerifyServerProof(context, 1, nil)
+	check = verifyServerProof(context, 1, nil)
 	if check {
 		t.Error("Wrong check: Invalid message")
 	}
 
 	//Invalid value of i
-	check = VerifyServerProof(context, 2, &servMsg)
+	check = verifyServerProof(context, 2, &servMsg)
 	if check {
 		t.Error("Wrong check: Invalid i value")
 	}
-	check = VerifyServerProof(context, -2, &servMsg)
+	check = verifyServerProof(context, -2, &servMsg)
 	if check {
 		t.Error("Wrong check: Negative i value")
 	}
@@ -598,7 +598,7 @@ func TestGenerateMisbehavingProof(t *testing.T) {
 	}
 
 	cs, _ := CheckOpenings(context, &commits, &openings)
-	challenge := Challenge{Sigs: nil, cs: cs}
+	challenge := Challenge{sigs: nil, cs: cs}
 
 	//Generate the challenge
 	for _, server := range servers {
@@ -608,10 +608,10 @@ func TestGenerateMisbehavingProof(t *testing.T) {
 	c, r, _ := clients[0].GenerateProofResponses(context, s, &challenge, v, w)
 
 	//Assemble the client message
-	clientMessage := ClientMessage{S: S, T0: T0, context: *context,
+	clientMessage := ClientMessage{sArray: S, t0: T0, context: *context,
 		proof: ClientProof{cs: cs, c: *c, t: *tclient, r: *r}}
 
-	proof, err := servers[0].GenerateMisbehavingProof(context, clientMessage.S[0])
+	proof, err := servers[0].generateMisbehavingProof(context, clientMessage.sArray[0])
 	if err != nil || proof == nil {
 		t.Error("Cannot generate misbehaving proof")
 	}
@@ -637,11 +637,11 @@ func TestGenerateMisbehavingProof(t *testing.T) {
 	}
 
 	//Invalid inputs
-	proof, err = servers[0].GenerateMisbehavingProof(nil, clientMessage.S[0])
+	proof, err = servers[0].generateMisbehavingProof(nil, clientMessage.sArray[0])
 	if err == nil || proof != nil {
 		t.Error("Wrong check: Invalid context")
 	}
-	proof, err = servers[0].GenerateMisbehavingProof(context, nil)
+	proof, err = servers[0].generateMisbehavingProof(context, nil)
 	if err == nil || proof != nil {
 		t.Error("Wrong check: Invalid Z")
 	}
@@ -662,7 +662,7 @@ func TestVerifyMisbehavingProof(t *testing.T) {
 	}
 
 	cs, _ := CheckOpenings(context, &commits, &openings)
-	challenge := Challenge{Sigs: nil, cs: cs}
+	challenge := Challenge{sigs: nil, cs: cs}
 
 	//Normal execution
 	for _, server := range servers {
@@ -672,45 +672,45 @@ func TestVerifyMisbehavingProof(t *testing.T) {
 	c, r, _ := clients[0].GenerateProofResponses(context, s, &challenge, v, w)
 
 	//Assemble the client message
-	clientMessage := ClientMessage{S: S, T0: T0, context: *context,
+	clientMessage := ClientMessage{sArray: S, t0: T0, context: *context,
 		proof: ClientProof{cs: cs, c: *c, t: *tclient, r: *r}}
 
-	proof, _ := servers[0].GenerateMisbehavingProof(context, clientMessage.S[0])
+	proof, _ := servers[0].generateMisbehavingProof(context, clientMessage.sArray[0])
 
-	check := VerifyMisbehavingProof(context, 0, proof, clientMessage.S[0])
+	check := verifyMisbehavingProof(context, 0, proof, clientMessage.sArray[0])
 	if !check {
 		t.Error("Cannot verify valid misbehaving proof")
 	}
 
 	//Invalid inputs
-	check = VerifyMisbehavingProof(nil, 0, proof, clientMessage.S[0])
+	check = verifyMisbehavingProof(nil, 0, proof, clientMessage.sArray[0])
 	if check {
 		t.Error("Wrong check: Invalid context")
 	}
 
-	check = VerifyMisbehavingProof(context, 1, proof, clientMessage.S[0])
+	check = verifyMisbehavingProof(context, 1, proof, clientMessage.sArray[0])
 	if check {
 		t.Error("Wrong check: Invalid index")
 	}
-	check = VerifyMisbehavingProof(context, -1, proof, clientMessage.S[0])
+	check = verifyMisbehavingProof(context, -1, proof, clientMessage.sArray[0])
 	if check {
 		t.Error("Wrong check: Negative index")
 	}
 
-	check = VerifyMisbehavingProof(context, 0, nil, clientMessage.S[0])
+	check = verifyMisbehavingProof(context, 0, nil, clientMessage.sArray[0])
 	if check {
 		t.Error("Wrong check: Missing proof")
 	}
 
-	check = VerifyMisbehavingProof(context, 0, proof, nil)
+	check = verifyMisbehavingProof(context, 0, proof, nil)
 	if check {
 		t.Error("Wrong check: Invalid Z")
 	}
 
 	//Modify proof values
 
-	proof, _ = servers[0].GenerateMisbehavingProof(context, clientMessage.S[0])
-	saveProof := ServerProof{
+	proof, _ = servers[0].generateMisbehavingProof(context, clientMessage.sArray[0])
+	saveProof := serverProof{
 		c:  proof.c,
 		t1: proof.t1,
 		t2: proof.t2,
@@ -721,42 +721,42 @@ func TestVerifyMisbehavingProof(t *testing.T) {
 
 	//Check inputs
 	proof.c = nil
-	check = VerifyMisbehavingProof(context, 0, proof, clientMessage.S[0])
+	check = verifyMisbehavingProof(context, 0, proof, clientMessage.sArray[0])
 	if check {
 		t.Error("Error in challenge verification")
 	}
 	proof.c = saveProof.c
 
 	proof.t1 = nil
-	check = VerifyMisbehavingProof(context, 0, proof, clientMessage.S[0])
+	check = verifyMisbehavingProof(context, 0, proof, clientMessage.sArray[0])
 	if check {
 		t.Error("Error in t1 verification")
 	}
 	proof.t1 = saveProof.t1
 
 	proof.t2 = nil
-	check = VerifyMisbehavingProof(context, 0, proof, clientMessage.S[0])
+	check = verifyMisbehavingProof(context, 0, proof, clientMessage.sArray[0])
 	if check {
 		t.Error("Error in t2 verification")
 	}
 	proof.t2 = saveProof.t2
 
 	proof.t3 = nil
-	check = VerifyMisbehavingProof(context, 0, proof, clientMessage.S[0])
+	check = verifyMisbehavingProof(context, 0, proof, clientMessage.sArray[0])
 	if check {
 		t.Error("Error in t3 verification")
 	}
 	proof.t3 = saveProof.t3
 
 	proof.r1 = nil
-	check = VerifyMisbehavingProof(context, 0, proof, clientMessage.S[0])
+	check = verifyMisbehavingProof(context, 0, proof, clientMessage.sArray[0])
 	if check {
 		t.Error("Error in r1 verification")
 	}
 	proof.r1 = saveProof.r1
 
 	proof.r2 = suite.Scalar().One()
-	check = VerifyMisbehavingProof(context, 0, proof, clientMessage.S[0])
+	check = verifyMisbehavingProof(context, 0, proof, clientMessage.sArray[0])
 	if check {
 		t.Error("Error in r2 verification")
 	}
@@ -796,7 +796,7 @@ func TestToBytes_ServerProof(t *testing.T) {
 	}
 
 	cs, _ := CheckOpenings(context, &commits, &openings)
-	challenge := Challenge{Sigs: nil, cs: cs}
+	challenge := Challenge{sigs: nil, cs: cs}
 
 	//Create challenge
 	for _, server := range servers {
@@ -806,7 +806,7 @@ func TestToBytes_ServerProof(t *testing.T) {
 	c, r, _ := clients[0].GenerateProofResponses(context, s, &challenge, v, w)
 
 	//Assemble the client message
-	clientMessage := ClientMessage{S: S, T0: T0, context: *context,
+	clientMessage := ClientMessage{sArray: S, t0: T0, context: *context,
 		proof: ClientProof{cs: cs, c: *c, t: *tclient, r: *r}}
 
 	servMsg := ServerMessage{request: clientMessage, proofs: nil, tags: nil, sigs: nil, indexes: nil}
@@ -819,7 +819,7 @@ func TestToBytes_ServerProof(t *testing.T) {
 		t.Error("Cannot convert normal proof")
 	}
 	//Normal execution for correct misbehaving proof
-	proof, _ := servers[0].GenerateMisbehavingProof(context, S[0])
+	proof, _ := servers[0].generateMisbehavingProof(context, S[0])
 	data, err = proof.ToBytes()
 	if err != nil || data == nil {
 		t.Error("Cannot convert misbehaving proof")
