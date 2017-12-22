@@ -1,14 +1,6 @@
 package main
 
-import (
-	"dagapython"
-	"fmt"
-	"os"
-
-	"gopkg.in/dedis/crypto.v0/abstract"
-)
-
-func main() {
+/*func main() {
 	os.Exit(mainExitCode())
 }
 
@@ -45,4 +37,4 @@ func mainExitCode() int {
 	}
 
 	return 0
-}
+}*/
