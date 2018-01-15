@@ -1,7 +1,7 @@
-daga/*
-dagaexample/*
 test/*
 github.com/*
 golang.org/*
 gopkg.in/*
-*.test
+dagaexample/*
+dagapython/*
+daga-old/*
