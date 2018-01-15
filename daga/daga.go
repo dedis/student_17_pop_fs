@@ -1,4 +1,4 @@
-package dagapython
+package daga
 
 import (
 	"fmt"

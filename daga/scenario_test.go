@@ -1,4 +1,4 @@
-package dagapython_test
+package daga_test
 
 import (
 	"dagapython"
