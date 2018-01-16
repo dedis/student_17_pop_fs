@@ -1,11 +1,11 @@
 package daga_test
 
 import (
-	"dagapython"
 	"fmt"
 	"math/rand"
 	"testing"
 
+	"github.com/dedis/student_17_pop_fs/daga"
 	"gopkg.in/dedis/crypto.v0/abstract"
 )
 
@@ -18,9 +18,9 @@ func TestScenario(test *testing.T) {
 
 	//Generates clients
 	var X []abstract.Point
-	var clients []dagapython.Client
+	var clients []daga.Client
 	for i := 0; i < c; i++ {
-		client, err := dagapython.CreateClient(i, nil)
+		client, err := daga.CreateClient(i, nil)
 		if err != nil {
 			fmt.Printf("Cannot create clients:\n%s\n", err)
 			return
@@ -31,9 +31,9 @@ func TestScenario(test *testing.T) {
 
 	//Generates servers
 	var Y []abstract.Point
-	var servers []dagapython.Server
+	var servers []daga.Server
 	for j := 0; j < s; j++ {
-		server, err := dagapython.CreateServer(j, nil)
+		server, err := daga.CreateServer(j, nil)
 		if err != nil {
 			fmt.Printf("Cannot create servers:\n%s\n", err)
 			return
@@ -51,7 +51,7 @@ func TestScenario(test *testing.T) {
 	//Generate client's generators
 	var H []abstract.Point
 	for i := 0; i < len(X); i++ {
-		temp, err := dagapython.GenerateClientGenerator(i, &R)
+		temp, err := daga.GenerateClientGenerator(i, &R)
 		if err != nil {
 			fmt.Printf("Error in client's geenrators:\n%s\n", err)
 			return
@@ -59,7 +59,7 @@ func TestScenario(test *testing.T) {
 		H = append(H, temp)
 	}
 
-	context := dagapython.ContextEd25519{G: dagapython.Members{X: X, Y: Y}, R: R, H: H}
+	context := daga.ContextEd25519{G: daga.Members{X: X, Y: Y}, R: R, H: H}
 
 	//Client's protocol
 	var i = rand.Intn(len(X))
@@ -74,7 +74,7 @@ func TestScenario(test *testing.T) {
 	var j = rand.Intn(len(Y)) //Randomly selects the leader
 	//In practice, server j generates its commitments and then send it to the other servers asking them to generate and broadcast their commitments
 	//Here, we will just make each server generate its commitment
-	var commits []dagapython.Commitment
+	var commits []daga.Commitment
 	var openings []abstract.Scalar
 	for _, server := range servers {
 		com, open, e := server.GenerateCommitment(&context)
@@ -86,7 +86,7 @@ func TestScenario(test *testing.T) {
 		openings = append(openings, open)
 	}
 	//After receiving all the commitments, a server checks the signatures
-	err = dagapython.VerifyCommitmentSignature(&context, &commits)
+	err = daga.VerifyCommitmentSignature(&context, &commits)
 	if err != nil {
 		fmt.Printf("Error in the commitment signature:\n%s\n", err)
 		return
@@ -94,13 +94,13 @@ func TestScenario(test *testing.T) {
 	//Then the leader publishes its opening and asked the other servers to do the same
 	//Here the openings are already stored in openings
 	//Then each server can check that the openings matches
-	cs, err := dagapython.CheckOpenings(&context, &commits, &openings)
+	cs, err := daga.CheckOpenings(&context, &commits, &openings)
 	if err != nil {
 		fmt.Printf("Error in the openings:\n%s\n", err)
 	}
 
 	//The leader now creates the challenge and runs CheckUpdateChallenge before passing the message to the next server
-	challenge := dagapython.InitializeChallenge(cs)
+	challenge := daga.InitializeChallenge(cs)
 
 	for shift := 0; shift < len(Y); shift++ {
 		err = servers[(j+shift)%len(Y)].CheckUpdateChallenge(&context, cs, challenge)
@@ -142,7 +142,7 @@ func TestScenario(test *testing.T) {
 		return
 	} else {
 		//A Null value means that the authentication is rejected
-		if Tf.Equal(dagapython.Suite.Point().Null()) {
+		if Tf.Equal(daga.Suite.Point().Null()) {
 			fmt.Printf("Authentication rejected\n")
 			return
 		}
