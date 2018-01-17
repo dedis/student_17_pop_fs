@@ -56,7 +56,7 @@ func TestGenerateCommitment(t *testing.T) {
 	if err != nil {
 		t.Error("Invalid commitment")
 	}
-	err = ECDSAVerify(suite.Point().Mul(nil, servers[0].private), msg, commit.sigs.sig)
+	err = ECDSAVerify(suite.Point().Mul(nil, servers[0].private), msg, commit.sig.sig)
 	if err != nil {
 		t.Error("Wrong signature")
 	}
@@ -80,19 +80,19 @@ func TestVerifyCommitmentSignature(t *testing.T) {
 
 	//Change a random index
 	i := rand.Intn(len(servers))
-	commits[i].sigs.index = i + 1
+	commits[i].sig.index = i + 1
 	err = VerifyCommitmentSignature(context, &commits)
 	if err == nil {
 		t.Errorf("Cannot verify matching indexes for %d", i)
 	}
-	commits[i].sigs.index = i + 1
+	commits[i].sig.index = i + 1
 
 	//Change a signature
 	//Code shown as not covered, but it does detect the modification and returns an error
-	sig := commits[i].sigs.sig
+	sig := commits[i].sig.sig
 	sig = append([]byte("A"), sig...)
-	sig = sig[:len(commits[i].sigs.sig)]
-	commits[i].sigs.sig = sig
+	sig = sig[:len(commits[i].sig.sig)]
+	commits[i].sig.sig = sig
 	err = VerifyCommitmentSignature(context, &commits)
 	if err == nil {
 		t.Errorf("Cannot verify signature for %d", i)

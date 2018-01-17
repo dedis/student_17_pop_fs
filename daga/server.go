@@ -21,7 +21,7 @@ type Server struct {
 /*Commitment stores the index of the server, the commitment value and the signature for the commitment*/
 type Commitment struct {
 	commit abstract.Point
-	sigs   serverSignature
+	sig    serverSignature
 }
 
 /*serverSignature stores a signature created by a server and the server's index*/
@@ -84,13 +84,13 @@ func (server *Server) GenerateCommitment(context *ContextEd25519) (commit *Commi
 	if err != nil {
 		return nil, nil, fmt.Errorf("Error in commit signature generation: %s", err)
 	}
-	return &Commitment{sigs: serverSignature{index: server.index, sig: sig}, commit: com}, opening, nil
+	return &Commitment{sig: serverSignature{index: server.index, sig: sig}, commit: com}, opening, nil
 }
 
 /*VerifyCommitmentSignature verifies that all the commitments are valid and correctly signed*/
 func VerifyCommitmentSignature(context *ContextEd25519, commits *[]Commitment) (err error) {
 	for i, com := range *commits {
-		if i != com.sigs.index {
+		if i != com.sig.index {
 			return fmt.Errorf("Wrong index")
 		}
 		//TODO: How to check that a point is on the curve?
@@ -100,7 +100,7 @@ func VerifyCommitmentSignature(context *ContextEd25519, commits *[]Commitment) (
 		if e != nil {
 			return fmt.Errorf("Error in conversion of commit for verification: %s", err)
 		}
-		err = ECDSAVerify(context.G.Y[i], msg, com.sigs.sig)
+		err = ECDSAVerify(context.G.Y[i], msg, com.sig.sig)
 		if err != nil {
 			return err
 		}

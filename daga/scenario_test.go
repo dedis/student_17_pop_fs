@@ -9,7 +9,6 @@ import (
 	"gopkg.in/dedis/crypto.v0/abstract"
 )
 
-//Allows to exit the program with a message and an error code
 func TestScenario(test *testing.T) {
 	//Number of clients
 	c := 20
