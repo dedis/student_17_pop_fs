@@ -99,7 +99,7 @@ func (server *Server) GenerateCommitment(context *ContextEd25519) (commit *Commi
 func VerifyCommitmentSignature(context *ContextEd25519, commits []Commitment) (err error) {
 	for i, com := range commits {
 		if i != com.sig.index {
-			return fmt.Errorf("Wrong index")
+			return fmt.Errorf("Wrong index: got %d expected %d", com.sig.index, i)
 		}
 		//TODO: How to check that a point is on the curve?
 
@@ -157,7 +157,7 @@ func InitializeChallenge(context *ContextEd25519, commits []Commitment, openings
 It also adds the server's signature to the list if the round-robin is not completed (the challenge has not yet made it back to the leader)
 It must be used after the leader ran InitializeChallenge and after each server received the challenge from the previous server*/
 func (server *Server) CheckUpdateChallenge(context *ContextEd25519, challenge *ChallengeCheck) error {
-	//Check the signatures and for duplicates
+	//Check the signatures and check for duplicates
 	msg, e := challenge.cs.MarshalBinary()
 	if e != nil {
 		return fmt.Errorf("Error in challenge conversion: %s", e)
