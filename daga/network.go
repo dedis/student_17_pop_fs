@@ -83,7 +83,7 @@ func NetEncodePoint(point abstract.Point) (*NetPoint, error) {
 }
 
 func (netpoint *NetPoint) NetDecode() (abstract.Point, error) {
-	var point abstract.Point
+	point := suite.Point().Null()
 	err := point.UnmarshalBinary(netpoint.Value)
 	if err != nil {
 		return nil, fmt.Errorf("Decode error\n%s", err)
@@ -102,7 +102,7 @@ func NetEncodeScalar(scalar abstract.Scalar) (*NetScalar, error) {
 }
 
 func (netscalar *NetScalar) NetDecode() (abstract.Scalar, error) {
-	var scalar abstract.Scalar
+	scalar := suite.Scalar().Zero()
 	err := scalar.UnmarshalBinary(netscalar.Value)
 	if err != nil {
 		return nil, fmt.Errorf("Decode error\n%s", err)
@@ -125,8 +125,11 @@ func NetEncodePoints(points []abstract.Point) ([]NetPoint, error) {
 
 func NetDecodePoints(netpoints []NetPoint) ([]abstract.Point, error) {
 	var points []abstract.Point
+	if len(netpoints) == 0 {
+		return nil, fmt.Errorf("Empty array")
+	}
 	for i, p := range netpoints {
-		var temp abstract.Point
+		temp := suite.Point().Null()
 		err := temp.UnmarshalBinary(p.Value)
 		if err != nil {
 			return nil, fmt.Errorf("Decode error at index %d\n%s", i, err)
@@ -150,8 +153,11 @@ func NetEncodeScalars(scalars []abstract.Scalar) ([]NetScalar, error) {
 
 func NetDecodeScalars(netscalars []NetScalar) ([]abstract.Scalar, error) {
 	var scalars []abstract.Scalar
+	if len(netscalars) == 0 {
+		return nil, fmt.Errorf("Empty array")
+	}
 	for i, s := range netscalars {
-		var temp abstract.Scalar
+		temp := suite.Scalar().Zero()
 		err := temp.UnmarshalBinary(s.Value)
 		if err != nil {
 			return nil, fmt.Errorf("Decode error at index %d\n%s", i, err)
