@@ -37,6 +37,13 @@ type NetCommitment struct {
 	Sig    NetServerSignature
 }
 
+type NetChallengeCheck struct {
+	Cs       NetScalar
+	Sigs     []NetServerSignature
+	Commits  []NetCommitment
+	Openings []NetScalar
+}
+
 type NetChallenge struct {
 	Cs   NetScalar
 	Sigs []NetServerSignature
@@ -285,6 +292,66 @@ func (netcom *NetCommitment) NetDecode() (*Commitment, error) {
 	com.commit = commit
 
 	return &com, nil
+}
+
+func (chall *ChallengeCheck) NetEncode() (*NetChallengeCheck, error) {
+	netchall := NetChallengeCheck{}
+
+	for _, sig := range chall.sigs {
+		netchall.Sigs = append(netchall.Sigs, sig.netEncode())
+	}
+
+	for i, com := range chall.commits {
+		temp, err := com.NetEncode()
+		if err != nil {
+			return nil, fmt.Errorf("Encode error for commit %d\n%s", i, err)
+		}
+		netchall.Commits = append(netchall.Commits, *temp)
+	}
+
+	cs, err := NetEncodeScalar(chall.cs)
+	if err != nil {
+		return nil, fmt.Errorf("Encode error for cs\n%s", err)
+	}
+	netchall.Cs = *cs
+
+	openings, err := NetEncodeScalars(chall.openings)
+	if err != nil {
+		return nil, fmt.Errorf("Encode error in openings\n%s", err)
+	}
+	netchall.Openings = openings
+
+	return &netchall, nil
+}
+
+func (netchall *NetChallengeCheck) NetDecode() (*ChallengeCheck, error) {
+	chall := ChallengeCheck{}
+
+	for _, sig := range netchall.Sigs {
+		chall.sigs = append(chall.sigs, sig.netDecode())
+	}
+
+	for i, com := range netchall.Commits {
+		temp, err := com.NetDecode()
+		if err != nil {
+			return nil, fmt.Errorf("Decode error for commit %d\n%s", i, err)
+		}
+		chall.commits = append(chall.commits, *temp)
+	}
+
+	cs, err := netchall.Cs.NetDecode()
+	if err != nil {
+		return nil, fmt.Errorf("Decode error for cs\n%s", err)
+	}
+	chall.cs = cs
+
+	openings, err := NetDecodeScalars(netchall.Openings)
+	if err != nil {
+		return nil, fmt.Errorf("Encode error in openings\n%s", err)
+	}
+	chall.openings = openings
+
+	return &chall, nil
 }
 
 func (chall *Challenge) NetEncode() (*NetChallenge, error) {
