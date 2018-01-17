@@ -8,35 +8,42 @@ import (
 
 //Provides functions to help with JSON marshal/unmarshal
 
+/*NetPoint provides a JSON compatible representation of a abstract.Point*/
 type NetPoint struct {
 	Value []byte
 }
 
+/*NetScalar provides a JSON compatible representation of a abstract.Scalar*/
 type NetScalar struct {
 	Value []byte
 }
 
+/*NetMembers provides a JSON compatible representation of the Members struct*/
 type NetMembers struct {
 	X []NetPoint
 	Y []NetPoint
 }
 
+/*NetContextEd25519 provides a JSON compatible representation of the ContextEd25519 struct*/
 type NetContextEd25519 struct {
 	G NetMembers
 	R []NetPoint
 	H []NetPoint
 }
 
+/*NetServerSignature provides a JSON compatible representation of the serverSignature struct*/
 type NetServerSignature struct {
 	Index int
 	Sig   []byte
 }
 
+/*NetCommitment provides a JSON compatible representation of the Commitment struct*/
 type NetCommitment struct {
 	Commit NetPoint
 	Sig    NetServerSignature
 }
 
+/*NetChallengeCheck provides a JSON compatible representation of the ChallengeCheck struct*/
 type NetChallengeCheck struct {
 	Cs       NetScalar
 	Sigs     []NetServerSignature
@@ -44,11 +51,13 @@ type NetChallengeCheck struct {
 	Openings []NetScalar
 }
 
+/*NetChallenge provides a JSON compatible representation of the Challenge struct*/
 type NetChallenge struct {
 	Cs   NetScalar
 	Sigs []NetServerSignature
 }
 
+/*NetClientProof provides a JSON compatible representation of the ClientProof struct*/
 type NetClientProof struct {
 	Cs NetScalar
 	T  []NetPoint
@@ -56,6 +65,7 @@ type NetClientProof struct {
 	R  []NetScalar
 }
 
+/*NetClientMessage provides a JSON compatible representation of the ClientMessage struct*/
 type NetClientMessage struct {
 	Context NetContextEd25519
 	SArray  []NetPoint
@@ -63,6 +73,7 @@ type NetClientMessage struct {
 	Proof   NetClientProof
 }
 
+/*NetServerProof provides a JSON compatible representation of the ServerProof struct*/
 type NetServerProof struct {
 	T1 NetPoint
 	T2 NetPoint
@@ -72,6 +83,7 @@ type NetServerProof struct {
 	R2 NetScalar
 }
 
+/*NetServerMessage provides a JSON compatible representation of the ServerMessage struct*/
 type NetServerMessage struct {
 	Request NetClientMessage
 	Tags    []NetPoint

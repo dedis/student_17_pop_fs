@@ -38,7 +38,8 @@ type ChallengeCheck struct {
 	openings []abstract.Scalar
 }
 
-/*Challenge stores the collectively generated challenge and the signatures of the servers*/
+/*Challenge stores the collectively generated challenge and the signatures of the servers
+This is the structure sent to the client*/
 type Challenge struct {
 	cs   abstract.Scalar
 	sigs []serverSignature
