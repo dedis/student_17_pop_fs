@@ -73,7 +73,7 @@ func TestVerifyCommitmentSignature(t *testing.T) {
 	}
 
 	//Normal execution
-	err := VerifyCommitmentSignature(context, &commits)
+	err := VerifyCommitmentSignature(context, commits)
 	if err != nil {
 		t.Error("Cannot verify the signatures for a legit commit array")
 	}
@@ -81,7 +81,7 @@ func TestVerifyCommitmentSignature(t *testing.T) {
 	//Change a random index
 	i := rand.Intn(len(servers))
 	commits[i].sig.index = i + 1
-	err = VerifyCommitmentSignature(context, &commits)
+	err = VerifyCommitmentSignature(context, commits)
 	if err == nil {
 		t.Errorf("Cannot verify matching indexes for %d", i)
 	}
@@ -93,7 +93,7 @@ func TestVerifyCommitmentSignature(t *testing.T) {
 	sig = append([]byte("A"), sig...)
 	sig = sig[:len(commits[i].sig.sig)]
 	commits[i].sig.sig = sig
-	err = VerifyCommitmentSignature(context, &commits)
+	err = VerifyCommitmentSignature(context, commits)
 	if err == nil {
 		t.Errorf("Cannot verify signature for %d", i)
 	}
@@ -112,7 +112,7 @@ func TestCheckOpenings(t *testing.T) {
 	}
 
 	//Normal execution
-	cs, err := CheckOpenings(context, &commits, &openings)
+	cs, err := CheckOpenings(context, commits, openings)
 	if err != nil {
 		t.Error("Cannot check the openings")
 	}
@@ -124,20 +124,53 @@ func TestCheckOpenings(t *testing.T) {
 		t.Errorf("Wrong computation of challenge cs: %s instead of %s", cs, challenge)
 	}
 
-	//Change the length of the openings
-	CutOpenings := openings[:len(openings)-1]
-	cs, err = CheckOpenings(context, &commits, &CutOpenings)
+	//Empty inputs
+	cs, err = CheckOpenings(nil, commits, openings)
 	if err == nil {
-		t.Error("Invalid length check")
+		t.Error("Wrong check: Empty context")
 	}
 	if cs != nil {
-		t.Error("cs not nil on length error")
+		t.Error("cs not nil on empty context")
+	}
+	cs, err = CheckOpenings(context, nil, openings)
+	if err == nil {
+		t.Error("Wrong check: Empty commits")
+	}
+	if cs != nil {
+		t.Error("cs not nil on empty commits")
+	}
+	cs, err = CheckOpenings(context, commits, nil)
+	if err == nil {
+		t.Error("Wrong check: Empty openings")
+	}
+	if cs != nil {
+		t.Error("cs not nil on empty openings")
+	}
+
+	//Change the length of the openings
+	CutOpenings := openings[:len(openings)-1]
+	cs, err = CheckOpenings(context, commits, CutOpenings)
+	if err == nil {
+		t.Error("Invalid length check on openings")
+	}
+	if cs != nil {
+		t.Error("cs not nil on opening length error")
+	}
+
+	//Change the length of the commits
+	CutCommits := commits[:len(commits)-1]
+	cs, err = CheckOpenings(context, CutCommits, openings)
+	if err == nil {
+		t.Error("Invalid length check on comits")
+	}
+	if cs != nil {
+		t.Error("cs not nil on commit length error")
 	}
 
 	//Change a random opening
 	i := rand.Intn(len(servers))
 	openings[i] = suite.Scalar().Zero()
-	cs, err = CheckOpenings(context, &commits, &openings)
+	cs, err = CheckOpenings(context, commits, openings)
 	if err == nil {
 		t.Error("Invalid opening check")
 	}
@@ -147,18 +180,48 @@ func TestCheckOpenings(t *testing.T) {
 }
 
 func TestInitializeChallenge(t *testing.T) {
-	cs := suite.Scalar().Pick(random.Stream)
+	_, servers, context, _ := generateTestContext(rand.Intn(10)+1, rand.Intn(10)+1)
+
+	//Generate commitments
+	var commits []Commitment
+	var openings []abstract.Scalar
+	for i := 0; i < len(servers); i++ {
+		commit, open, _ := servers[i].GenerateCommitment(context)
+		commits = append(commits, *commit)
+		openings = append(openings, open)
+	}
 
 	//Normal execution
-	challenge := InitializeChallenge(cs)
-	if challenge == nil {
+	challenge, err := InitializeChallenge(context, commits, openings)
+	if challenge == nil || err != nil {
 		t.Error("Cannot initialize challenge")
 	}
 
-	//Empty cs
-	challenge = InitializeChallenge(nil)
-	if challenge != nil {
+	//Empty inputs
+	challenge, err = InitializeChallenge(nil, commits, openings)
+	if err == nil || challenge != nil {
 		t.Error("Wrong check: Empty cs")
+	}
+	challenge, err = InitializeChallenge(context, nil, openings)
+	if err == nil || challenge != nil {
+		t.Error("Wrong check: Empty commits")
+	}
+	challenge, err = InitializeChallenge(context, commits, nil)
+	if err == nil || challenge != nil {
+		t.Error("Wrong check: Empty openings")
+	}
+
+	//Mismatch length between commits and openings
+	challenge, err = InitializeChallenge(context, commits, openings[:len(openings)-2])
+	if err == nil || challenge != nil {
+		t.Error("Wrong check: Empty openings")
+	}
+
+	//Change an opening
+	openings[0] = suite.Scalar().Zero()
+	challenge, err = InitializeChallenge(context, commits, openings[:len(openings)-2])
+	if err == nil || challenge != nil {
+		t.Error("Invalid opening check")
 	}
 }
 
@@ -175,11 +238,11 @@ func TestCheckUpdateChallenge(t *testing.T) {
 		openings = append(openings, open)
 	}
 
-	cs, _ := CheckOpenings(context, &commits, &openings)
-	challenge := Challenge{sigs: nil, cs: cs}
+	challenge, _ := InitializeChallenge(context, commits, openings)
+	cs := challenge.cs
 
 	//Normal execution
-	err := servers[0].CheckUpdateChallenge(context, cs, &challenge)
+	err := servers[0].CheckUpdateChallenge(context, challenge)
 	if err != nil {
 		t.Error("Cannot update the challenge")
 	}
@@ -189,7 +252,7 @@ func TestCheckUpdateChallenge(t *testing.T) {
 
 	//Duplicate signature
 	challenge.sigs = append(challenge.sigs, challenge.sigs[0])
-	err = servers[0].CheckUpdateChallenge(context, cs, &challenge)
+	err = servers[0].CheckUpdateChallenge(context, challenge)
 	if err == nil {
 		t.Error("Does not check for duplicates signatures")
 	}
@@ -198,35 +261,114 @@ func TestCheckUpdateChallenge(t *testing.T) {
 	//Altered signature
 	fake := append([]byte("A"), challenge.sigs[0].sig...)
 	challenge.sigs[0].sig = fake[:len(challenge.sigs[0].sig)]
-	err = servers[0].CheckUpdateChallenge(context, cs, &challenge)
+	err = servers[0].CheckUpdateChallenge(context, challenge)
 	if err == nil {
 		t.Error("Wrond check of signature")
 	}
-	//Restore correct signature for next tests
+	//Restore correct signature for the next tests
 	challenge.sigs = nil
-	servers[0].CheckUpdateChallenge(context, cs, &challenge)
+	servers[0].CheckUpdateChallenge(context, challenge)
 
 	//Modify the challenge
 	challenge.cs = suite.Scalar().Zero()
-	err = servers[0].CheckUpdateChallenge(context, cs, &challenge)
+	err = servers[0].CheckUpdateChallenge(context, challenge)
 	if err == nil {
 		t.Error("Does not check the challenge")
 	}
 	challenge.cs = cs
 
-	//Only appends if the challenge has not already do a round-robin
+	//Only appends if the challenge has not already done a round-robin
 	for _, server := range servers[1:] {
-		err = server.CheckUpdateChallenge(context, cs, &challenge)
+		err = server.CheckUpdateChallenge(context, challenge)
 		if err != nil {
 			t.Errorf("Error during the round-robin at server %d", server.index)
 		}
 	}
-	err = servers[0].CheckUpdateChallenge(context, cs, &challenge)
+	err = servers[0].CheckUpdateChallenge(context, challenge)
 	if err != nil {
 		t.Error("Error when closing the loop of the round-robin")
 	}
 	if len(challenge.sigs) != len(servers) {
 		t.Errorf("Invalid number of signatures: %d instead of %d", len(challenge.sigs), len(servers))
+	}
+
+	//Change a commitment
+	challenge.commits[0].commit = suite.Point().Mul(nil, suite.Scalar().One())
+	err = servers[0].CheckUpdateChallenge(context, challenge)
+	if err == nil {
+		t.Error("Invalid commitment signature check")
+	}
+	challenge.commits[0].commit = suite.Point().Mul(nil, challenge.openings[0])
+
+	//Change an opening
+	challenge.openings[0] = suite.Scalar().Zero()
+	err = servers[0].CheckUpdateChallenge(context, challenge)
+	if err == nil {
+		t.Error("Invalid opening check")
+	}
+}
+
+func TestFinalizeChallenge(t *testing.T) {
+	//The following tests need at least 2 servers
+	_, servers, context, _ := generateTestContext(rand.Intn(10)+1, rand.Intn(10)+2)
+
+	//Generate commitments
+	var commits []Commitment
+	var openings []abstract.Scalar
+	for i := 0; i < len(servers); i++ {
+		commit, open, _ := servers[i].GenerateCommitment(context)
+		commits = append(commits, *commit)
+		openings = append(openings, open)
+	}
+
+	challenge, _ := InitializeChallenge(context, commits, openings)
+
+	//Makes every server update the challenge
+	var err error
+	for _, server := range servers[1:] {
+		err = server.CheckUpdateChallenge(context, challenge)
+		if err != nil {
+			t.Errorf("Error during the round-robin at server %d", server.index)
+		}
+	}
+
+	//Normal execution
+	//Let's say that server 0 is the leader and received the message back
+	servers[0].CheckUpdateChallenge(context, challenge)
+	clientChallenge, err := FinalizeChallenge(context, challenge)
+	if err != nil {
+		t.Errorf("Error during finalization of the challenge")
+	}
+	//Check cs value
+	if !clientChallenge.cs.Equal(challenge.cs) {
+		t.Errorf("cs values does not match")
+	}
+	//Check number of signatures
+	if len(clientChallenge.sigs) != len(challenge.sigs) {
+		t.Errorf("Signature count does not match: got %d expected %d", len(clientChallenge.sigs), len(challenge.sigs))
+	}
+
+	//Empty inputs
+	clientChallenge, err = FinalizeChallenge(nil, challenge)
+	if err == nil || clientChallenge != nil {
+		t.Errorf("Wrong check: Empty context")
+	}
+	clientChallenge, err = FinalizeChallenge(context, nil)
+	if err == nil || clientChallenge != nil {
+		t.Errorf("Wrong check: Empty challenge")
+	}
+
+	//Add a signature
+	challenge.sigs = append(challenge.sigs, challenge.sigs[0])
+	clientChallenge, err = FinalizeChallenge(context, challenge)
+	if err == nil || clientChallenge != nil {
+		t.Errorf("Wrong check: Higher signature count")
+	}
+	//Remove a signature
+	challenge.sigs = challenge.sigs[:len(challenge.sigs)-2]
+	clientChallenge, err = FinalizeChallenge(context, challenge)
+	if err == nil || clientChallenge != nil {
+		t.Errorf("Wrong check: Lower signature count")
 	}
 }
 
@@ -249,15 +391,17 @@ func TestInitializeServerMessage(t *testing.T) {
 		openings = append(openings, open)
 	}
 
-	cs, _ := CheckOpenings(context, &commits, &openings)
-	challenge := Challenge{sigs: nil, cs: cs}
+	challenge, _ := InitializeChallenge(context, commits, openings)
+	cs := challenge.cs
 
 	//Sign the challenge
 	for _, server := range servers {
-		server.CheckUpdateChallenge(context, cs, &challenge)
+		server.CheckUpdateChallenge(context, challenge)
 	}
 
-	c, r, _ := clients[0].GenerateProofResponses(context, s, &challenge, v, w)
+	clientChallenge, _ := FinalizeChallenge(context, challenge)
+
+	c, r, _ := clients[0].GenerateProofResponses(context, s, clientChallenge, v, w)
 
 	//Assemble the client message
 	clientMessage := ClientMessage{sArray: S, t0: T0, context: *context,
@@ -296,15 +440,17 @@ func TestServerProtocol(t *testing.T) {
 		openings = append(openings, open)
 	}
 
-	cs, _ := CheckOpenings(context, &commits, &openings)
-	challenge := Challenge{sigs: nil, cs: cs}
+	challenge, _ := InitializeChallenge(context, commits, openings)
+	cs := challenge.cs
 
 	//Sign the challenge
 	for _, server := range servers {
-		server.CheckUpdateChallenge(context, cs, &challenge)
+		server.CheckUpdateChallenge(context, challenge)
 	}
 
-	c, r, _ := clients[0].GenerateProofResponses(context, s, &challenge, v, w)
+	clientChallenge, _ := FinalizeChallenge(context, challenge)
+
+	c, r, _ := clients[0].GenerateProofResponses(context, s, clientChallenge, v, w)
 
 	//Assemble the client message
 	clientMessage := ClientMessage{sArray: S, t0: T0, context: *context,
@@ -428,15 +574,16 @@ func TestGenerateServerProof(t *testing.T) {
 		openings = append(openings, open)
 	}
 
-	cs, _ := CheckOpenings(context, &commits, &openings)
-	challenge := Challenge{sigs: nil, cs: cs}
+	challenge, _ := InitializeChallenge(context, commits, openings)
+	cs := challenge.cs
 
 	//Sign the challenge
 	for _, server := range servers {
-		server.CheckUpdateChallenge(context, cs, &challenge)
+		server.CheckUpdateChallenge(context, challenge)
 	}
 
-	c, r, _ := clients[0].GenerateProofResponses(context, s, &challenge, v, w)
+	clientChallenge, _ := FinalizeChallenge(context, challenge)
+	c, r, _ := clients[0].GenerateProofResponses(context, s, clientChallenge, v, w)
 
 	//Assemble the client message
 	clientMessage := ClientMessage{sArray: S, t0: T0, context: *context,
@@ -507,15 +654,16 @@ func TestVerifyServerProof(t *testing.T) {
 		openings = append(openings, open)
 	}
 
-	cs, _ := CheckOpenings(context, &commits, &openings)
-	challenge := Challenge{sigs: nil, cs: cs}
+	challenge, _ := InitializeChallenge(context, commits, openings)
+	cs := challenge.cs
 
 	//Normal execution
 	for _, server := range servers {
-		server.CheckUpdateChallenge(context, cs, &challenge)
+		server.CheckUpdateChallenge(context, challenge)
 	}
 
-	c, r, _ := clients[0].GenerateProofResponses(context, s, &challenge, v, w)
+	clientChallenge, _ := FinalizeChallenge(context, challenge)
+	c, r, _ := clients[0].GenerateProofResponses(context, s, clientChallenge, v, w)
 
 	//Assemble the client message
 	clientMessage := ClientMessage{sArray: S, t0: T0, context: *context,
@@ -660,15 +808,17 @@ func TestGenerateMisbehavingProof(t *testing.T) {
 		openings = append(openings, open)
 	}
 
-	cs, _ := CheckOpenings(context, &commits, &openings)
-	challenge := Challenge{sigs: nil, cs: cs}
+	challenge, _ := InitializeChallenge(context, commits, openings)
+	cs := challenge.cs
 
 	//Generate the challenge
 	for _, server := range servers {
-		server.CheckUpdateChallenge(context, cs, &challenge)
+		server.CheckUpdateChallenge(context, challenge)
 	}
 
-	c, r, _ := clients[0].GenerateProofResponses(context, s, &challenge, v, w)
+	clientChallenge, _ := FinalizeChallenge(context, challenge)
+
+	c, r, _ := clients[0].GenerateProofResponses(context, s, clientChallenge, v, w)
 
 	//Assemble the client message
 	clientMessage := ClientMessage{sArray: S, t0: T0, context: *context,
@@ -724,15 +874,17 @@ func TestVerifyMisbehavingProof(t *testing.T) {
 		openings = append(openings, open)
 	}
 
-	cs, _ := CheckOpenings(context, &commits, &openings)
-	challenge := Challenge{sigs: nil, cs: cs}
+	challenge, _ := InitializeChallenge(context, commits, openings)
+	cs := challenge.cs
 
 	//Normal execution
 	for _, server := range servers {
-		server.CheckUpdateChallenge(context, cs, &challenge)
+		server.CheckUpdateChallenge(context, challenge)
 	}
 
-	c, r, _ := clients[0].GenerateProofResponses(context, s, &challenge, v, w)
+	clientChallenge, _ := FinalizeChallenge(context, challenge)
+
+	c, r, _ := clients[0].GenerateProofResponses(context, s, clientChallenge, v, w)
 
 	//Assemble the client message
 	clientMessage := ClientMessage{sArray: S, t0: T0, context: *context,
@@ -858,15 +1010,17 @@ func TestToBytes_ServerProof(t *testing.T) {
 		openings = append(openings, open)
 	}
 
-	cs, _ := CheckOpenings(context, &commits, &openings)
-	challenge := Challenge{sigs: nil, cs: cs}
+	challenge, _ := InitializeChallenge(context, commits, openings)
+	cs := challenge.cs
 
 	//Create challenge
 	for _, server := range servers {
-		server.CheckUpdateChallenge(context, cs, &challenge)
+		server.CheckUpdateChallenge(context, challenge)
 	}
 
-	c, r, _ := clients[0].GenerateProofResponses(context, s, &challenge, v, w)
+	clientChallenge, _ := FinalizeChallenge(context, challenge)
+
+	c, r, _ := clients[0].GenerateProofResponses(context, s, clientChallenge, v, w)
 
 	//Assemble the client message
 	clientMessage := ClientMessage{sArray: S, t0: T0, context: *context,

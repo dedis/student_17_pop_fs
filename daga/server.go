@@ -30,6 +30,14 @@ type serverSignature struct {
 	sig   []byte
 }
 
+/*ChallengeCheck stores all the information passed along the servers to check and sign the challenge*/
+type ChallengeCheck struct {
+	cs       abstract.Scalar
+	sigs     []serverSignature //Signatures for cs only
+	commits  []Commitment
+	openings []abstract.Scalar
+}
+
 /*Challenge stores the collectively generated challenge and the signatures of the servers*/
 type Challenge struct {
 	cs   abstract.Scalar
@@ -88,8 +96,8 @@ func (server *Server) GenerateCommitment(context *ContextEd25519) (commit *Commi
 }
 
 /*VerifyCommitmentSignature verifies that all the commitments are valid and correctly signed*/
-func VerifyCommitmentSignature(context *ContextEd25519, commits *[]Commitment) (err error) {
-	for i, com := range *commits {
+func VerifyCommitmentSignature(context *ContextEd25519, commits []Commitment) (err error) {
+	for i, com := range commits {
 		if i != com.sig.index {
 			return fmt.Errorf("Wrong index")
 		}
@@ -109,32 +117,46 @@ func VerifyCommitmentSignature(context *ContextEd25519, commits *[]Commitment) (
 }
 
 /*CheckOpenings verifies each opening and returns the computed challenge*/
-func CheckOpenings(context *ContextEd25519, commits *[]Commitment, openings *[]abstract.Scalar) (cs abstract.Scalar, err error) {
-	if len(*commits) != len(*openings) {
-		return nil, fmt.Errorf("Lengths do not match")
+func CheckOpenings(context *ContextEd25519, commits []Commitment, openings []abstract.Scalar) (cs abstract.Scalar, err error) {
+	if context == nil {
+		return nil, fmt.Errorf("Empty context")
 	}
+	if len(commits) != len(context.G.Y) {
+		return nil, fmt.Errorf("Incorrect number of commits: got %d expected %d", len(commits), len(context.G.Y))
+	}
+	if len(openings) != len(context.G.Y) {
+		return nil, fmt.Errorf("Incorrect number of openings: got %d expected %d", len(openings), len(context.G.Y))
+	}
+
 	cs = suite.Scalar().Zero()
-	for i := 0; i < len(*commits); i++ {
-		c := suite.Point().Mul(nil, (*openings)[i])
-		if !(*commits)[i].commit.Equal(c) {
-			return nil, fmt.Errorf("Mismatch opening for server " + strconv.Itoa(i))
+	for i := 0; i < len(commits); i++ {
+		c := suite.Point().Mul(nil, openings[i])
+		if !commits[i].commit.Equal(c) {
+			return nil, fmt.Errorf("Mismatch opening for server %d", i)
 		}
-		cs = suite.Scalar().Add(cs, (*openings)[i])
+		cs = suite.Scalar().Add(cs, openings[i])
 	}
 	return cs, nil
 }
 
-//InitializeChallenge creates a Challenge structure from a challenge value
-func InitializeChallenge(cs abstract.Scalar) (challenge *Challenge) {
-	if cs == nil {
-		return nil
+/*InitializeChallenge creates a Challenge structure from a challenge value
+It checks the openings before doing so*/
+func InitializeChallenge(context *ContextEd25519, commits []Commitment, openings []abstract.Scalar) (*ChallengeCheck, error) {
+	if context == nil || commits == nil || openings == nil || len(commits) == 0 || len(openings) == 0 || len(commits) != len(openings) {
+		return nil, fmt.Errorf("Invalid inputs")
 	}
-	return &Challenge{cs: cs, sigs: nil}
+	cs, err := CheckOpenings(context, commits, openings)
+	if err != nil {
+		return nil, err
+	}
+
+	return &ChallengeCheck{cs: cs, commits: commits, openings: openings, sigs: nil}, nil
 }
 
 /*CheckUpdateChallenge verifies that all the previous servers computed the same challenges and that their signatures are valid
-It also adds the server's signature to the list if the round-robin is not completed (the challenge has not yet made it back to the leader)*/
-func (server *Server) CheckUpdateChallenge(context *ContextEd25519, cs abstract.Scalar, challenge *Challenge) (err error) {
+It also adds the server's signature to the list if the round-robin is not completed (the challenge has not yet made it back to the leader)
+It must be used after the leader ran InitializeChallenge and after each server received the challenge from the previous server*/
+func (server *Server) CheckUpdateChallenge(context *ContextEd25519, challenge *ChallengeCheck) error {
 	//Check the signatures and for duplicates
 	msg, e := challenge.cs.MarshalBinary()
 	if e != nil {
@@ -153,6 +175,16 @@ func (server *Server) CheckUpdateChallenge(context *ContextEd25519, cs abstract.
 		}
 	}
 
+	//Checks the signatures of the commitments
+	err := VerifyCommitmentSignature(context, challenge.commits)
+	if err != nil {
+		return err
+	}
+	//Checks the openings
+	cs, err := CheckOpenings(context, challenge.commits, challenge.openings)
+	if err != nil {
+		return err
+	}
 	//Checks that the challenge values match
 	if !cs.Equal(challenge.cs) {
 		return fmt.Errorf("Challenge values does not match")
@@ -169,6 +201,19 @@ func (server *Server) CheckUpdateChallenge(context *ContextEd25519, cs abstract.
 	challenge.sigs = append(challenge.sigs, serverSignature{index: server.index, sig: sig})
 
 	return nil
+}
+
+/*FinalizeChallenge is used to convert the data passed between the servers into the challenge sent to the client
+It must be used after the leader got the message back and ran CheckUpdateChallenge*/
+func FinalizeChallenge(context *ContextEd25519, challenge *ChallengeCheck) (*Challenge, error) {
+	if context == nil || challenge == nil {
+		return nil, fmt.Errorf("Invalid inputs")
+	}
+	if len(challenge.sigs) != len(context.G.Y) {
+		return nil, fmt.Errorf("Signature count does not match: got %d expected %d", len(challenge.sigs), len(context.G.Y))
+	}
+
+	return &Challenge{cs: challenge.cs, sigs: challenge.sigs}, nil
 }
 
 //InitializeServerMessage creates a ServerMessage from a ClientMessage to ease further processing
